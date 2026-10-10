@@ -328,6 +328,8 @@ class Library {
   }
   async update(id, patch) {
     const asset = this.asset(id);
+    if (patch.contentRevision !== undefined && patch.contentRevision !== (asset.contentRevision || 0))
+      throw new Error("资源已更新，请刷新后重试。");
     if (patch.category !== undefined && !CATEGORIES.includes(patch.category))
       throw new Error("内容分类无效。");
     if (typeof patch.name === "string" && patch.name.trim())
@@ -422,8 +424,10 @@ class Library {
     await this.save();
     return { ...report, library: this.snapshot() };
   }
-  async thumbnail(id, data) {
+  async thumbnail(id, data, revision) {
     const asset = this.asset(id);
+    if (revision !== undefined && revision !== (asset.contentRevision || 0))
+      throw new Error("资源已更新，请重新生成缩略图。");
     if (
       typeof data !== "string" ||
       !data.startsWith("data:image/png;base64,") ||

@@ -8,11 +8,15 @@ const {
   shell,
   Menu,
   session,
+  clipboard,
 } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs/promises");
 const { pathToFileURL } = require("node:url");
 const { Library } = require("./library.cjs");
+const { ReskinService } = require("./reskin.cjs");
+const { startReskinBridge } = require("./reskin-bridge.cjs");
+const { CodexRunner } = require("./codex-runner.cjs");
 
 app.setName("Spine Shelf");
 const isMac = process.platform === "darwin";
@@ -31,7 +35,7 @@ protocol.registerSchemesAsPrivileged([
     },
   },
 ]);
-let mainWindow, library;
+let mainWindow, library, reskins, reskinBridge, codexRunner;
 let queue = Promise.resolve();
 const enqueue = (task) => {
   const result = queue.then(task);
@@ -104,6 +108,16 @@ app
   .then(async () => {
     library = new Library(path.join(app.getPath("userData"), "Library"));
     await library.init();
+    reskins = new ReskinService(library, (libraryChanged) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        if (libraryChanged) mainWindow.webContents.send("library:changed", library.snapshot());
+        mainWindow.webContents.send("reskin:changed");
+      }
+    });
+    await reskins.init();
+    codexRunner = new CodexRunner({service:reskins,enqueue,userData:app.getPath("userData")});
+    await codexRunner.init();
+    reskinBridge = await startReskinBridge({ service: reskins, userData: app.getPath("userData"), enqueue });
     if (!library.data.seeded) {
       await seedExamples();
       library.data.seeded = true;
@@ -147,6 +161,23 @@ app
       (_contents, _permission, callback) => callback(false),
     );
     handler("library:get", () => library.snapshot());
+    handler("reskin:status", async () => ({...reskinBridge.status(),codex:await codexRunner.status()}));
+    handler("reskin:list", (assetId) => reskins.list({ assetId }));
+    handler("reskin:details", (id) => codexRunner.details(id), true);
+    handler("reskin:create", async (input) => {
+      const status=await codexRunner.status(true);
+      if(!status.ready)throw new Error(status.message);
+      const result=await enqueue(()=>reskins.create(input));
+      await codexRunner.start(result.job.id);
+      return result;
+    });
+    handler("reskin:start", (id) => codexRunner.start(id));
+    handler("reskin:cancel", (id) => codexRunner.cancel(id));
+    handler("reskin:update", (id, status) => {
+      if (!["queued", "cancelled"].includes(status)) throw new Error("任务状态无效。");
+      return reskins.update(id, status);
+    }, true);
+    handler("reskin:copy", (id) => clipboard.writeText(reskins.handoff(id)));
     handler(
       "library:import-dialog",
       async (kind, collectionId) => {
@@ -183,7 +214,7 @@ app
     handler("library:classify", (id) => library.classifyLibrary(id), true);
     handler(
       "library:thumbnail",
-      (id, data) => library.thumbnail(id, data),
+      (id, data, revision) => library.thumbnail(id, data, revision),
       true,
     );
     handler("library:remove", (id) => library.remove(id), true);
@@ -269,4 +300,15 @@ app
   });
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin" || process.env.SPINE_SHELF_TEST) app.quit();
+});
+let finishing = false;
+app.on("before-quit", (event) => {
+  if (finishing) return;
+  event.preventDefault(); finishing = true;
+  (async () => {
+    await codexRunner?.shutdown();
+    await queue;
+    await reskinBridge?.close();
+    app.quit();
+  })().catch(error => { console.error(error.message); app.exit(1); });
 });

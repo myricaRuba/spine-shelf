@@ -11,7 +11,25 @@ contextBridge.exposeInMainWorld("shelf", {
   loadExamples: () => ipcRenderer.invoke("library:examples"),
   update: (id, patch) => ipcRenderer.invoke("library:update", id, patch),
   classify: (id) => ipcRenderer.invoke("library:classify", id),
-  thumbnail: (id, data) => ipcRenderer.invoke("library:thumbnail", id, data),
+  thumbnail: (id, data, revision) => ipcRenderer.invoke("library:thumbnail", id, data, revision),
+  onLibraryChange: (callback) => {
+    const listener = (_event, value) => callback(value);
+    ipcRenderer.on("library:changed", listener);
+    return () => ipcRenderer.removeListener("library:changed", listener);
+  },
+  onReskinChange: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on("reskin:changed", listener);
+    return () => ipcRenderer.removeListener("reskin:changed", listener);
+  },
+  reskinStatus: () => ipcRenderer.invoke("reskin:status"),
+  reskinList: (assetId) => ipcRenderer.invoke("reskin:list", assetId),
+  reskinDetails: (id) => ipcRenderer.invoke("reskin:details", id),
+  reskinCreate: (input) => ipcRenderer.invoke("reskin:create", input),
+  reskinStart: (id) => ipcRenderer.invoke("reskin:start", id),
+  reskinCancel: (id) => ipcRenderer.invoke("reskin:cancel", id),
+  reskinCopy: (id) => ipcRenderer.invoke("reskin:copy", id),
+  reskinUpdate: (id, status) => ipcRenderer.invoke("reskin:update", id, status),
   remove: (id) => ipcRenderer.invoke("library:remove", id),
   collection: (action, id, name) =>
     ipcRenderer.invoke("library:collection", action, id, name),

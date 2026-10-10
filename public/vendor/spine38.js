@@ -5580,8 +5580,9 @@ var spine;
 			if (skeletonMap != null) {
 				skeletonData.hash = skeletonMap.hash;
 				skeletonData.version = skeletonMap.spine;
-				if ("3.8.75" == skeletonData.version)
-					throw new Error("Unsupported skeleton data, please export with a newer version of Spine.");
+				// Spine Shelf compatibility: parse legacy 3.8.75 JSON using the 3.8
+				// schema and normal structural checks, preserving its version metadata.
+				// This is JSON-only; the binary version guard remains unchanged.
 				skeletonData.x = skeletonMap.x;
 				skeletonData.y = skeletonMap.y;
 				skeletonData.width = skeletonMap.width;

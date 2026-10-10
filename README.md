@@ -8,7 +8,7 @@
 
 中文桌面端 Spine 动画资源管理与预览工具。导入整个文件夹，自动识别骨骼、图集和图片，在本地保存、分类、搜索与预览，无需每次重新打开文件。
 
-[下载 v1.1.0](https://github.com/myricaRuba/spine-shelf/releases/tag/v1.1.0) · [更新记录](CHANGELOG.md) · [反馈问题](https://github.com/myricaRuba/spine-shelf/issues) · [参与贡献](CONTRIBUTING.md)
+[下载 v1.3.2](https://github.com/myricaRuba/spine-shelf/releases/tag/v1.3.2) · [更新记录](CHANGELOG.md) · [反馈问题](https://github.com/myricaRuba/spine-shelf/issues) · [参与贡献](CONTRIBUTING.md)
 
 ![Spine Shelf 桌面资源库与动画预览](docs/images/screenshot.png)
 
@@ -23,17 +23,18 @@ _截图使用 Esoteric Software 官方演示素材。_
 - **截图导出**：将当前帧保存为透明 PNG。
 - **浏览与整理**：搜索、格式筛选、排序、网格/列表切换；后台依次生成静态缩略图。
 - **可调预览区**：拖动左边界调整宽度并自动记忆，双击恢复默认；悬停图标查看中文说明。
-- **离线使用**：素材处理和分类均在本机完成，不上传素材到网络服务。
+- **AI 换肤**：在资源信息中填写要求，直接调用本机 Codex 制作，通过 MCP 将结果加入当前角色的皮肤列表；可展开查看制作详情。
+- **离线浏览**：导入、预览和分类均在本机完成；AI 换肤的图片生成由用户的 Codex 会话执行，需要相应的联网模型能力。
 
 ## 下载与安装
 
-当前版本 **v1.1.0**，在 [Releases](https://github.com/myricaRuba/spine-shelf/releases/latest) 选择对应安装包：
+当前版本 **v1.3.2**，在 [Releases](https://github.com/myricaRuba/spine-shelf/releases/latest) 选择对应安装包：
 
 | 系统 / 处理器 | 安装包 | 安装方式 |
 | --- | --- | --- |
-| **Windows 11 · Intel / AMD（x64）** | `Spine-Shelf-1.1.0-Windows-x64-Setup.exe` | 双击安装，可选择目录，默认安装给当前用户 |
-| **Windows 11 · ARM（如 Snapdragon）** | `Spine-Shelf-1.1.0-Windows-arm64-Setup.exe` | 双击安装，使用原生 ARM64 版本 |
-| **macOS · Apple Silicon（M 系列）** | `Spine-Shelf-1.1.0-macOS-arm64.dmg` | 打开后拖入「应用程序」 |
+| **Windows 11 · Intel / AMD（x64）** | `Spine-Shelf-1.3.2-Windows-x64-Setup.exe` | 双击安装，可选择目录，默认安装给当前用户 |
+| **Windows 11 · ARM（如 Snapdragon）** | `Spine-Shelf-1.3.2-Windows-arm64-Setup.exe` | 双击安装，使用原生 ARM64 版本 |
+| **macOS · Apple Silicon（M 系列）** | `Spine-Shelf-1.3.2-macOS-arm64.dmg` | 打开后拖入「应用程序」 |
 
 安装完成后，从桌面或开始菜单启动，导入文件夹或将文件夹拖入窗口。Windows 保留原生最小化、最大化和关闭按钮，快捷键显示为 Ctrl，并通过文件资源管理器打开资源库。卸载程序保留用户资源库。
 
@@ -51,6 +52,8 @@ _截图使用 Esoteric Software 官方演示素材。_
 | `.spine` 工程                     | 需先在 Spine 编辑器中导出，不能直接预览工程文件   |
 | ZIP / 加密数据 / 游戏专有压缩纹理 | 暂不支持                                          |
 
+`3.8.75` JSON 使用本地兼容补丁读取；该版本的二进制 SKEL 仍需在 Spine 编辑器中重新导出。补丁保留原 JSON 版本信息和骨骼、动画数据。
+
 建议的目录结构：
 
 ```text
@@ -63,6 +66,17 @@ _截图使用 Esoteric Software 官方演示素材。_
 导入器优先选择同目录同名图集，允许 `-pro` / `-ess` / `-pma` 等命名差异；只有一个图集时可以自动配对。多个候选无法明确匹配时会给出提示。重复检测比较骨骼、图集和图片的完整内容。
 
 首次启动会加入四份标记为「演示」的官方示例；可以移除，也可从导入窗口重新加载。
+
+## 在同一角色中添加 AI 皮肤
+
+**v1.3.2** 支持直接调用 Codex，并在任务的「制作详情」中查看进度与操作记录。需要本机可用的新版 Codex 与 ChatGPT 登录；真实模型调用已在 macOS Apple Silicon 验证，Windows 的真实 Codex 换肤流程尚未验证。
+
+1. 选择角色，进入右侧「资源信息 → AI 换肤」。
+2. 选择基础皮肤，填写新皮肤名称与换肤要求，点击「开始制作」。
+3. 软件自动调用本机已登录的 Codex，显示制作进度；制作期间保持 Spine Shelf 打开。
+4. 完成后点击「查看皮肤」，或在「动画预览 → 皮肤」中切换。角色条目、骨骼和动画保持原样。
+
+任务会保存进度，支持取消和失败后重试。MCP 负责读取当前角色、回报进度和校验写回；重绘使用 Codex 的图片生成能力。连接方式、工具与数据格式见 [换肤 MCP 说明](docs/reskin-mcp.md)。
 
 ## 自动分类如何工作
 
@@ -128,6 +142,8 @@ npm run test:e2e            # Electron 真实预览、交互和重启
 npm run test:classification # 分类筛选与手动修正
 npm run test:layout         # 面板调宽、宽度记忆和按钮提示
 npm run test:compat         # 5 个版本 × JSON/SKEL 的实际像素渲染
+npm run test:reskin         # MCP 回写、原皮肤像素与重启持久化
+npm run test:codex          # 点击开始 → 后台进程 → MCP 回写（测试进程，无模型调用）
 npm run package            # 本机架构 macOS .app
 npm run dist:mac           # macOS DMG
 npm run dist:win           # Windows x64 NSIS 安装包，在 Windows 上构建

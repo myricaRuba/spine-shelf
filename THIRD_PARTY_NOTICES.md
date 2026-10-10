@@ -21,7 +21,7 @@ Integration and modification of software containing Spine Runtimes are subject t
 | WebGL + core runtime  | 4.3.13                                                        | [WebGL](licenses/spine-4.3.txt), [core](licenses/spine-core-4.3.txt)               |
 | Demonstration exports | 4.2 branch, `examples/{spineboy,raptor,alien,goblins}/export` | [Original example notice](resources/examples/LICENSE)                              |
 
-`public/vendor/spine38.js` is the upstream JavaScript with its upstream license notice prepended. Its runtime code is unchanged. The unmodified source hash and URL are recorded in `licenses/spine38-source.json`. The npm runtimes are referenced as aliases `spine40` through `spine43`.
+`public/vendor/spine38.js` includes its upstream license notice. Spine Shelf applies one local compatibility change: the JSON reader accepts version `3.8.75` through the existing 3.8 parser and structural checks, preserving the source version metadata. The binary reader's version guard is unchanged. The original, unmodified source hash and URL are recorded in `licenses/spine38-source.json`; regression coverage is in `tests/spine38-runtime.test.cjs`. The npm runtimes are referenced as aliases `spine40` through `spine43`.
 
 Demonstration characters, textures, skeletons, and atlas data belong to Esoteric Software and are not original Spine Shelf artwork. Their presence here does not authorize extracting or relicensing them under MIT. The product screenshot uses these same official demonstrations, not a user's imported library.
 
@@ -34,6 +34,10 @@ Demonstration characters, textures, skeletons, and atlas data belong to Esoteric
 | Scheduler    | 0.28.0                       | [MIT](licenses/scheduler.txt)                                                                                |
 | Lucide React | 0.468.0                      | [ISC and component notices](licenses/lucide-react.txt)                                                       |
 | Electron     | 44.7.0                       | [MIT](licenses/electron.txt); Electron/Chromium third-party notices also accompany the Electron distribution |
+| MCP SDK      | 1.32.1                       | [MIT](licenses/mcp-sdk.txt) |
+| Zod          | 4.6.5                        | [MIT](licenses/zod.txt) |
+| pngjs        | 7.0.0                        | [MIT](licenses/pngjs.txt) |
+| smol-toml    | 1.9.1                        | [BSD-3-Clause](licenses/smol-toml.txt) |
 
 Exact dependency versions and integrity hashes are locked in `package-lock.json`. Development-only tools retain the licenses in their respective packages.
 

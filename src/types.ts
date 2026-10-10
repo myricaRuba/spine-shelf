@@ -38,12 +38,45 @@ export interface Asset {
   categoryReasons: string[];
   classificationVersion: number;
   contentFeatures: ContentFeatures;
+  contentRevision?: number;
+  reskins?: { name: string; baseSkin: string; atlas: string; taskId: string }[];
+}
+export interface ReskinJob {
+  id: string;
+  assetId: string;
+  assetName: string;
+  name: string;
+  prompt: string;
+  baseSkin: string;
+  status: "queued" | "processing" | "applying" | "completed" | "failed" | "cancelled";
+  message: string;
+  createdAt: string;
+  updatedAt: string;
+  execution?: {runId:string;state:"running"|"completed"|"failed"|"cancelled"|"interrupted";startedAt:string;endedAt?:string;threadId?:string};
 }
 export interface Library {
   version: number;
   assets: Asset[];
   collections: { id: string; name: string }[];
   root: string;
+}
+export interface ReskinProgressEntry {
+  id: string;
+  at?: string;
+  updatedAt?: string;
+  kind: "status" | "message" | "tool" | "error";
+  status: "info" | "running" | "completed" | "failed";
+  text: string;
+  tool?: string;
+  detail?: string;
+  exitCode?: number;
+  legacy?: boolean;
+}
+export interface ReskinDetails {
+  job: ReskinJob;
+  entries: ReskinProgressEntry[];
+  trimmed: number;
+  running: boolean;
 }
 export interface ImportReport {
   added: string[];
@@ -71,7 +104,17 @@ export interface ShelfAPI {
     skipped: number;
     errors: { id: string; name: string; message: string }[];
   }>;
-  thumbnail(id: string, data: string): Promise<Library>;
+  thumbnail(id: string, data: string, revision?: number): Promise<Library>;
+  onLibraryChange(callback: (library: Library) => void): () => void;
+  onReskinChange(callback: () => void): () => void;
+  reskinStatus(): Promise<{ available: boolean; lastConnectedAt: string | null; codex:{ready:boolean;message:string} }>;
+  reskinList(assetId: string): Promise<ReskinJob[]>;
+  reskinDetails(taskId: string): Promise<ReskinDetails>;
+  reskinCreate(input: { assetId: string; name: string; prompt: string; baseSkin: string }): Promise<{ job: ReskinJob; handoff: string }>;
+  reskinStart(taskId:string):Promise<ReskinJob>;
+  reskinCancel(taskId:string):Promise<ReskinJob>;
+  reskinCopy(taskId: string): Promise<void>;
+  reskinUpdate(taskId: string, status: "queued" | "cancelled"): Promise<ReskinJob>;
   remove(id: string): Promise<Library>;
   collection(
     action: "create" | "rename" | "remove",
@@ -88,7 +131,7 @@ declare global {
   }
 }
 export const assetUrl = (asset: Asset, file: string) =>
-  `shelf://asset/${asset.id}/${file}`;
+  `shelf://asset/${asset.id}/${file}?v=${asset.contentRevision || 0}`;
 export const formatSize = (size: number) =>
   size > 1024 * 1024
     ? `${(size / 1024 / 1024).toFixed(1)} MB`

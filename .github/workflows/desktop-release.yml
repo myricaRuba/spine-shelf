@@ -38,6 +38,7 @@ jobs:
       - run: npm run build
       - run: npm run test:classification
       - run: npm run test:compat
+      - run: npm run test:reskin
       - run: npx --no-install electron-builder --win nsis --${{ matrix.arch }} --publish never
       - name: Install and test the packaged application
         shell: pwsh
@@ -75,6 +76,10 @@ jobs:
         run: npm run test:e2e
         env:
           SPINE_SHELF_EXECUTABLE: ${{ github.workspace }}/release/mac-arm64/Spine Shelf.app/Contents/MacOS/Spine Shelf
+      - name: Test direct Codex dispatch and progress with an isolated fixture
+        run: npm run test:codex
+        env:
+          SPINE_TEST_APP: ${{ github.workspace }}/release/mac-arm64/Spine Shelf.app/Contents/MacOS/Spine Shelf
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: installer-macos-arm64

@@ -22,6 +22,7 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { SpineEngine } from "./engine";
+import ReskinPanel from "./ReskinPanel";
 import {
   type Asset,
   type Library,
@@ -109,7 +110,7 @@ export default function Viewer({
             JSON.stringify(asset.animations) ||
           asset.bones !== meta.bones
         )
-          callbacks.current.onUpdate(asset.id, meta).catch(() => {});
+          callbacks.current.onUpdate(asset.id, { ...meta, contentRevision: asset.contentRevision || 0 }).catch(() => {});
         const animate = (now: number) => {
           if (cancelled) return;
           try {
@@ -139,7 +140,7 @@ export default function Viewer({
       instance.dispose();
       engine.current = null;
     };
-  }, [asset.id, asset.pma, retry]);
+  }, [asset.id, asset.pma, asset.contentRevision, retry]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -334,7 +335,7 @@ export default function Viewer({
             <span className={playing ? "live-dot" : ""} />
             {playing ? "LIVE PREVIEW" : "PAUSED"}
           </span>
-          <canvas ref={canvas} aria-label={`${asset.name} 动画画布`} />
+          <canvas key={`${asset.contentRevision || 0}:${asset.pma}:${retry}`} ref={canvas} aria-label={`${asset.name} 动画画布`} />
           {loading && (
             <div className="stage-message">
               <span className="spinner" />
@@ -587,6 +588,11 @@ export default function Viewer({
       </div>
       {tab === "info" && (
         <div className="info-panel">
+          <ReskinPanel key={asset.id} asset={asset} skin={skin} notify={notify} showSkin={(name) => {
+            const instance = engine.current;
+            if (!instance?.skeleton || !instance.data.findSkin(name)) { notify("皮肤正在加载，请稍后再试"); return; }
+            instance.setSkin(name); setSkin(name); setTab("preview");
+          }} />
           <label className="field">
             <span>资源名称</span>
             <input

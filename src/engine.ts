@@ -1,4 +1,5 @@
 import { assetUrl, type Asset } from "./types";
+import { addReskin } from "./reskin-runtime";
 
 // The runtime APIs differ across Spine export versions. Keep that adaptation here.
 let legacyPromise: Promise<any> | undefined;
@@ -102,9 +103,19 @@ export class SpineEngine {
           : new Uint8Array(await response.arrayBuffer());
       if (this.disposed) return;
       this.data = reader.readSkeletonData(content);
+      for (const layer of this.asset.reskins || []) {
+        const extra = await new Promise<any>((resolve, reject) =>
+          this.manager.loadTextureAtlas(assetUrl(this.asset, layer.atlas),
+            (_path: string, value: any) => resolve(value),
+            (_path: string, message: string) => reject(new Error(message))),
+        );
+        if (this.disposed) return;
+        addReskin(rt, this.data, extra, layer.name, layer.baseSkin);
+      }
       this.skeleton = new rt.Skeleton(this.data);
       const skins = this.data.skins;
-      const skin = skins.find((s: any) => s.name !== "default") || skins[0];
+      const skin = skins.find((s: any) => s.name === this.asset.reskins?.at(-1)?.name)
+        || skins.find((s: any) => s.name !== "default") || skins[0];
       if (skin) {
         this.applySkin(skin.name);
         this.skin = skin.name;

@@ -102,6 +102,7 @@ export default function App() {
     libraryRef.current = data;
     setLibrary(data);
   }, []);
+  useEffect(() => window.shelf?.onLibraryChange(applyLibrary), [applyLibrary]);
   useEffect(() => {
     if (!window.shelf) {
       setBootError(
@@ -141,6 +142,7 @@ export default function App() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [importing]);
+  const thumbnailRevision = library.assets.map(a => `${a.id}:${a.contentRevision || 0}`).join(",");
   useEffect(() => {
     if (!loaded || generating.current || !window.shelf) return;
     generating.current = true;
@@ -148,24 +150,24 @@ export default function App() {
     const run = async () => {
       while (true) {
         const asset = libraryRef.current.assets.find(
-          (a) => !a.thumbnail && !thumbAttempts.current.has(a.id),
+          (a) => !a.thumbnail && !thumbAttempts.current.has(`${a.id}:${a.contentRevision || 0}`),
         );
         if (!asset) break;
-        thumbAttempts.current.add(asset.id);
+        thumbAttempts.current.add(`${asset.id}:${asset.contentRevision || 0}`);
         const canvas = document.createElement("canvas");
         canvas.width = 520;
         canvas.height = 380;
         const renderer = new SpineEngine(canvas, asset);
         try {
           await renderer.load();
-          if (!libraryRef.current.assets.some((a) => a.id === asset.id))
+          if (!libraryRef.current.assets.some((a) => a.id === asset.id && (a.contentRevision || 0) === (asset.contentRevision || 0)))
             continue;
           renderer.seek(Math.min(0.35, renderer.duration / 3));
           applyLibrary(
-            await window.shelf.update(asset.id, renderer.metadata()),
+            await window.shelf.update(asset.id, { ...renderer.metadata(), contentRevision: asset.contentRevision || 0 }),
           );
           applyLibrary(
-            await window.shelf.thumbnail(asset.id, renderer.capture()),
+            await window.shelf.thumbnail(asset.id, renderer.capture(), asset.contentRevision || 0),
           );
         } catch (error) {
           console.warn("Thumbnail unavailable", asset.name, error);
@@ -176,7 +178,7 @@ export default function App() {
       generating.current = false;
     };
     void run();
-  }, [loaded, library.assets.length, applyLibrary]);
+  }, [loaded, thumbnailRevision, applyLibrary]);
 
   const updateAsset = useCallback(
     async (id: string, patch: Partial<Asset>) => {
