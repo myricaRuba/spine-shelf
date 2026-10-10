@@ -8,7 +8,7 @@
 
 中文桌面端 Spine 动画资源管理与预览工具。导入整个文件夹，自动识别骨骼、图集和图片，在本地保存、分类、搜索与预览，无需每次重新打开文件。
 
-[下载 v1.3.2](https://github.com/myricaRuba/spine-shelf/releases/tag/v1.3.2) · [更新记录](CHANGELOG.md) · [反馈问题](https://github.com/myricaRuba/spine-shelf/issues) · [参与贡献](CONTRIBUTING.md)
+[下载 v1.4.0](https://github.com/myricaRuba/spine-shelf/releases/tag/v1.4.0) · [更新记录](CHANGELOG.md) · [反馈问题](https://github.com/myricaRuba/spine-shelf/issues) · [参与贡献](CONTRIBUTING.md)
 
 ![Spine Shelf 桌面资源库与动画预览](docs/images/screenshot.png)
 
@@ -30,13 +30,13 @@ _截图使用 Esoteric Software 官方演示素材。_
 
 ## 下载与安装
 
-当前公开发布版本 **v1.3.2**；源码中的 v1.4.0 项目功能尚未发布安装包。在 [Releases](https://github.com/myricaRuba/spine-shelf/releases/latest) 选择对应安装包：
+当前版本 **v1.4.0**，在 [Releases](https://github.com/myricaRuba/spine-shelf/releases/latest) 选择对应安装包：
 
 | 系统 / 处理器 | 安装包 | 安装方式 |
 | --- | --- | --- |
-| **Windows 11 · Intel / AMD（x64）** | `Spine-Shelf-1.3.2-Windows-x64-Setup.exe` | 双击安装，可选择目录，默认安装给当前用户 |
-| **Windows 11 · ARM（如 Snapdragon）** | `Spine-Shelf-1.3.2-Windows-arm64-Setup.exe` | 双击安装，使用原生 ARM64 版本 |
-| **macOS · Apple Silicon（M 系列）** | `Spine-Shelf-1.3.2-macOS-arm64.dmg` | 打开后拖入「应用程序」 |
+| **Windows 11 · Intel / AMD（x64）** | `Spine-Shelf-1.4.0-Windows-x64-Setup.exe` | 双击安装，可选择目录，默认安装给当前用户 |
+| **Windows 11 · ARM（如 Snapdragon）** | `Spine-Shelf-1.4.0-Windows-arm64-Setup.exe` | 双击安装，使用原生 ARM64 版本 |
+| **macOS · Apple Silicon（M 系列）** | `Spine-Shelf-1.4.0-macOS-arm64.dmg` | 打开后拖入「应用程序」 |
 
 安装完成后，从桌面或开始菜单启动，导入文件夹或将文件夹拖入窗口。Windows 保留原生最小化、最大化和关闭按钮，快捷键显示为 Ctrl，并通过文件资源管理器打开资源库。卸载程序保留用户资源库。
 
@@ -52,7 +52,7 @@ _截图使用 Esoteric Software 官方演示素材。_
 | 骨骼数据                          | JSON、SKEL，以及以 `.skel.bytes` 命名的二进制数据 |
 | 纹理                              | `.atlas` 引用的常规图片，支持多页图集             |
 | `.spine` 工程                     | 需先在 Spine 编辑器中导出，不能直接预览工程文件   |
-| ZIP / 加密数据 / 游戏专有压缩纹理 | 暂不支持                                          |
+| ZIP 直接导入 / 加密数据 / 游戏专有压缩纹理 | 暂不支持；项目 ZIP 请先解压再导入             |
 
 `3.8.75` JSON 使用本地兼容补丁读取；该版本的二进制 SKEL 仍需在 Spine 编辑器中重新导出。补丁保留原 JSON 版本信息和骨骼、动画数据。
 
