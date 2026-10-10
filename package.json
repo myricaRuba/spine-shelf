@@ -1,0 +1,102 @@
+{
+  "name": "spine-shelf",
+  "version": "1.0.0",
+  "description": "Spine Shelf — 本地 Spine 动画资源库与桌面预览器",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.cjs",
+  "author": "myricaRuba",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/myricaRuba/spine-shelf.git"
+  },
+  "homepage": "https://github.com/myricaRuba/spine-shelf#readme",
+  "bugs": {
+    "url": "https://github.com/myricaRuba/spine-shelf/issues"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "vite --host 127.0.0.1",
+    "build": "tsc -b && vite build",
+    "build:icons": "node scripts/build-icons.mjs",
+    "start": "electron .",
+    "test": "node --test tests/*.test.cjs",
+    "test:e2e": "node scripts/smoke.mjs",
+    "test:compat": "node scripts/compatibility.mjs",
+    "test:classification": "node scripts/classification-smoke.mjs",
+    "test:layout": "node scripts/layout-smoke.mjs",
+    "package": "npm run build && electron-builder --mac dir",
+    "dist:mac": "npm run build && electron-builder --mac dmg",
+    "dist:win": "npm run build && electron-builder --win nsis"
+  },
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "lucide-react": "^0.468.0",
+    "spine40": "npm:@esotericsoftware/spine-webgl@4.0.31",
+    "spine41": "npm:@esotericsoftware/spine-webgl@4.1.56",
+    "spine42": "npm:@esotericsoftware/spine-webgl@4.2.120",
+    "spine43": "npm:@esotericsoftware/spine-webgl@4.3.13"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.1.0",
+    "electron": "44.7.0",
+    "electron-builder": "26.15.3",
+    "playwright": "^1.58.0",
+    "typescript": "~5.9.3",
+    "vite": "8.3.4"
+  },
+  "build": {
+    "appId": "studio.spineshelf.desktop",
+    "productName": "Spine Shelf",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/examples",
+        "to": "examples"
+      },
+      {
+        "from": "licenses",
+        "to": "licenses"
+      },
+      {
+        "from": "LICENSE",
+        "to": "LICENSE"
+      },
+      {
+        "from": "THIRD_PARTY_NOTICES.md",
+        "to": "THIRD_PARTY_NOTICES.md"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.graphics-design",
+      "target": [
+        "dmg"
+      ],
+      "identity": null,
+      "icon": "resources/icon.icns"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

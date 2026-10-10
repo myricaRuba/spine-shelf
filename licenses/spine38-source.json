@@ -1,0 +1,6 @@
+{
+  "source": "https://raw.githubusercontent.com/EsotericSoftware/spine-runtimes/3.8/spine-ts/build/spine-webgl.js",
+  "license": "https://raw.githubusercontent.com/EsotericSoftware/spine-runtimes/3.8/LICENSE",
+  "originalSha256": "4b108bad314c152bf0ff7a7f56fce5c98073f05a2bfa53e880d6c24b6f7c3aa5",
+  "modification": "Prepended the upstream license notice; runtime code is unchanged."
+}

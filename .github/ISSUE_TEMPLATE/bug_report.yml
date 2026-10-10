@@ -1,0 +1,26 @@
+name: 问题反馈
+description: 报告导入、预览或资源库问题
+body:
+  - type: input
+    id: environment
+    attributes:
+      label: 运行环境
+      placeholder: macOS 版本、Apple Silicon / Intel、应用版本
+    validations:
+      required: true
+  - type: input
+    id: format
+    attributes:
+      label: 素材格式
+      placeholder: 例如 Spine 4.1、SKEL + ATLAS + PNG
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 复现步骤与实际结果
+      description: 请附错误提示。仅上传你有权公开的素材，并去掉个人路径和敏感信息。
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期结果

@@ -1,0 +1,10 @@
+Use case: logo-brand.
+Asset type: final macOS application icon, also used as the small sidebar logo, for “Spine Shelf”, a desktop library and previewer for 2D skeletal animation assets.
+Primary request: design one original, memorable icon that immediately suggests skeletal animation, playback, and an organized asset collection.
+Composition: a single centered macOS rounded-square dark graphite tile, straight-on, occupying about 86% of a square 1024x1024 canvas, with truly transparent space outside the tile. The main glyph is large, bold and simple: a forward-pointing triangular play mark constructed from three thick, slightly tapered lime-green rig segments connected by three clean circular pivot joints. The joints should read as animation rig control points, with small dark circular centers. The middle of the triangle is open dark negative space. Add just two understated offset edge strokes behind the mark, suggesting stacked animation frames, without clutter.
+Style: premium creative-tool app icon, precise geometry, smooth corners, subtle dimensional bevel and soft restrained lighting, near-flat rather than a toy. Excellent silhouette and clarity at 32 pixels. Crisp professional finish.
+Color palette: graphite #191c22 tile, luminous pale lime #cdf58c main mark, muted olive frame edges, very subtle green reflections.
+Text: none.
+Constraints: produce only ONE final icon, no presentation sheet, no app mockup, no words, no letters, no watermark, no book, no literal anatomical bone, no skull, no resemblance to the official Spine logo. Keep the entire tile and its gentle shadow inside the transparent canvas. Real transparency outside the rounded tile.
+
+Generated with the built-in image_gen tool on 2026-10-10. Master PNG retains generated transparency. App icon and interface assets are resized from this same master.
