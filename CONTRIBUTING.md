@@ -31,3 +31,5 @@ npm run build
 版本以 `package.json` 为准，界面自动读取该版本。同步更新 `package-lock.json` 和 `CHANGELOG.md`，完成检查后，在 macOS 执行 `npm run dist:mac`；在 Windows 执行 `npm run dist:win`（x64）或 `npm run dist:win:arm64`。也可在 Actions 中触发 `Desktop packages`，勾选 `draft_release` 后，工作流会在三个平台构建、验证并创建 Release 草稿与校验文件。确认构建结果后发布草稿；不要把安装包提交进 Git 历史。保留安装包内的 `licenses/`、`LICENSE` 和 `THIRD_PARTY_NOTICES.md`。
 
 Windows 安装测试 `scripts/windows-installer-smoke.ps1` 仅允许在可丢弃的 CI 运行器上执行；它会安装、重装并卸载程序，验证开始菜单、打包资源与资源库保留。桌面测试可通过 `SPINE_SHELF_EXECUTABLE` 指向已安装的程序。图标已提交，Windows 开发无需执行依赖 macOS 工具的 `build:icons`。
+
+Windows ARM64 打包使用 electron-builder 26.15.6 或以上。较早版本的 NSIS 解压器会跳过 ARM64 可执行文件，即使安装器返回成功也无法启动；见[上游修复](https://github.com/electron-userland/electron-builder/pull/9989)。发布检查必须实际运行安装后的程序。
