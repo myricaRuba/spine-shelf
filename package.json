@@ -1,6 +1,6 @@
 {
   "name": "spine-shelf",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Spine Shelf — 本地 Spine 动画资源库与桌面预览器",
   "private": true,
   "type": "module",
@@ -30,8 +30,9 @@
     "test:classification": "node scripts/classification-smoke.mjs",
     "test:layout": "node scripts/layout-smoke.mjs",
     "package": "npm run build && electron-builder --mac dir",
-    "dist:mac": "npm run build && electron-builder --mac dmg",
-    "dist:win": "npm run build && electron-builder --win nsis"
+    "dist:mac": "npm run build && electron-builder --mac dmg --publish never",
+    "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never",
+    "dist:win:arm64": "npm run build && electron-builder --win nsis --arm64 --publish never"
   },
   "dependencies": {
     "react": "^19.2.0",
@@ -79,6 +80,10 @@
       {
         "from": "THIRD_PARTY_NOTICES.md",
         "to": "THIRD_PARTY_NOTICES.md"
+      },
+      {
+        "from": "resources/icon.ico",
+        "to": "icon.ico"
       }
     ],
     "mac": {
@@ -87,16 +92,35 @@
         "dmg"
       ],
       "identity": null,
-      "icon": "resources/icon.icns"
+      "icon": "resources/icon.icns",
+      "artifactName": "Spine-Shelf-${version}-macOS-${arch}.${ext}"
     },
     "win": {
       "target": [
-        "nsis"
-      ]
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "resources/icon.ico",
+      "artifactName": "Spine-Shelf-${version}-Windows-${arch}-Setup.${ext}"
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "selectPerMachineByDefault": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Spine Shelf",
+      "deleteAppDataOnUninstall": false,
+      "installerLanguages": [
+        "zh_CN",
+        "en_US"
+      ],
+      "displayLanguageSelector": true
     }
   }
 }

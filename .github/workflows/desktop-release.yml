@@ -1,0 +1,110 @@
+name: Desktop packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      draft_release:
+        description: Create a draft release after all desktop checks pass
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2025
+            arch: x64
+          - runner: windows-11-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npm run test:classification
+      - run: npm run test:compat
+      - run: npx --no-install electron-builder --win nsis --${{ matrix.arch }} --publish never
+      - name: Install and test the packaged application
+        shell: pwsh
+        run: ./scripts/windows-installer-smoke.ps1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: installer-windows-${{ matrix.arch }}
+          path: release/*-Setup.exe
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: screenshots-windows-${{ matrix.arch }}
+          path: test-results/*.png
+          if-no-files-found: ignore
+
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 25
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npx --no-install electron-builder --mac dmg --arm64 --publish never
+      - name: Test the packaged application
+        run: npm run test:e2e
+        env:
+          SPINE_SHELF_EXECUTABLE: ${{ github.workspace }}/release/mac-arm64/Spine Shelf.app/Contents/MacOS/Spine Shelf
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: installer-macos-arm64
+          path: release/*.dmg
+          if-no-files-found: error
+
+  draft:
+    if: inputs.draft_release
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: installer-*
+          path: installers
+          merge-multiple: true
+      - name: Create checksums and draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          version=$(node -p 'require("./package.json").version')
+          notes="$PWD/docs/releases/v${version}.md"
+          cd installers
+          sha256sum *.exe *.dmg > SHA256SUMS.txt
+          gh release create "v${version}" --draft --target "$RELEASE_SHA" --title "Spine Shelf v${version}" --notes-file "$notes" *.exe *.dmg SHA256SUMS.txt

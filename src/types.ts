@@ -52,6 +52,7 @@ export interface ImportReport {
   library: Library;
 }
 export interface ShelfAPI {
+  readonly platform: string;
   getLibrary(): Promise<Library>;
   importDialog(
     kind: "folder" | "files",

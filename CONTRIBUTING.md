@@ -13,7 +13,7 @@ npm test
 npm run build
 ```
 
-改动预览或桌面交互时，在有图形环境的 macOS 上运行相关的 `test:e2e`、`test:layout`、`test:classification` 或 `test:compat`。这些脚本使用独立临时资源库。兼容性测试首次运行会下载官方测试素材。
+改动预览或桌面交互时，在有图形环境的 macOS 或 Windows 上运行相关的 `test:e2e`、`test:layout`、`test:classification` 或 `test:compat`。这些脚本使用独立临时资源库。兼容性测试首次运行会下载官方测试素材。
 
 ## 问题报告
 
@@ -28,4 +28,6 @@ npm run build
 
 ## 发布
 
-版本以 `package.json` 为准，界面自动读取该版本。同步更新 `package-lock.json` 和 `CHANGELOG.md`，完成检查后在 macOS 执行 `npm run dist:mac`。将安装包及其 SHA-256 校验文件上传到同名 `vX.Y.Z` GitHub Release；不要把安装包提交进 Git 历史。保留安装包内的 `licenses/`、`LICENSE` 和 `THIRD_PARTY_NOTICES.md`。
+版本以 `package.json` 为准，界面自动读取该版本。同步更新 `package-lock.json` 和 `CHANGELOG.md`，完成检查后，在 macOS 执行 `npm run dist:mac`；在 Windows 执行 `npm run dist:win`（x64）或 `npm run dist:win:arm64`。也可在 Actions 中触发 `Desktop packages`，勾选 `draft_release` 后，工作流会在三个平台构建、验证并创建 Release 草稿与校验文件。确认构建结果后发布草稿；不要把安装包提交进 Git 历史。保留安装包内的 `licenses/`、`LICENSE` 和 `THIRD_PARTY_NOTICES.md`。
+
+Windows 安装测试 `scripts/windows-installer-smoke.ps1` 仅允许在可丢弃的 CI 运行器上执行；它会安装、重装并卸载程序，验证开始菜单、打包资源与资源库保留。桌面测试可通过 `SPINE_SHELF_EXECUTABLE` 指向已安装的程序。图标已提交，Windows 开发无需执行依赖 macOS 工具的 `build:icons`。

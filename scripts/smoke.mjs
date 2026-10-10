@@ -1,10 +1,10 @@
 import { _electron as electron } from "playwright";
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, cp, readFile, writeFile, rename, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
 
-const dataDir = await mkdtemp(path.join(tmpdir(), "spine-shelf-e2e-"));
+const dataDir = await mkdtemp(path.join(tmpdir(), "spine-shelf-中文 路径-"));
 await mkdir("test-results", { recursive: true });
 const env = {
   ...process.env,
@@ -15,7 +15,13 @@ delete env.ELECTRON_RUN_AS_NODE;
 const errors = [];
 let app;
 async function launch() {
-  app = await electron.launch({ args: ["."], cwd: process.cwd(), env });
+  app = await electron.launch({
+    ...(process.env.SPINE_SHELF_EXECUTABLE
+      ? { executablePath: process.env.SPINE_SHELF_EXECUTABLE, args: [] }
+      : { args: ["."] }),
+    cwd: process.cwd(),
+    env,
+  });
   const page = await app.firstWindow();
   page.on("pageerror", (error) => {
     errors.push(error.message);
@@ -52,6 +58,32 @@ async function verifyPixels(page) {
 }
 try {
   let page = await launch();
+  assert.equal(await page.evaluate(() => window.shelf.platform), process.platform);
+  const shortcut = process.platform === "darwin" ? "Meta" : "Control";
+  await page.keyboard.press(`${shortcut}+k`);
+  assert.equal(await page.getByLabel("搜索资源").evaluate(el => el === document.activeElement), true);
+  assert.match(await page.locator(".search-field kbd").textContent(), process.platform === "darwin" ? /⌘/ : /Ctrl/);
+  await page.keyboard.press(`${shortcut}+o`);
+  await page.getByRole("dialog").waitFor();
+  await page.keyboard.press("Escape");
+  if (process.platform === "win32") {
+    const overlay = await page.evaluate(() => {
+      const wco = navigator.windowControlsOverlay;
+      const rect = wco?.getTitlebarAreaRect();
+      return { visible: wco?.visible, width: rect?.width, right: document.querySelector(".titlebar-right").getBoundingClientRect().right, windowWidth: innerWidth };
+    });
+    assert.equal(overlay.visible, true, "Native Windows window controls must be visible");
+    assert.ok(overlay.width < overlay.windowWidth && overlay.right <= overlay.width, JSON.stringify(overlay));
+    await app.evaluate(async ({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      await new Promise(resolve => { win.once("maximize", resolve); win.maximize(); });
+    });
+    assert.equal(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isMaximized()), true);
+    await app.evaluate(async ({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      await new Promise(resolve => { win.once("unmaximize", resolve); win.unmaximize(); });
+    });
+  }
   let data = await page.evaluate(() => window.shelf.getLibrary());
   assert.equal(data.assets.length, 4);
   for (const asset of data.assets) {
@@ -120,9 +152,26 @@ try {
   );
   assert.equal(report.duplicates.length, 4);
   assert.equal(report.added.length, 0);
+  // Real import from a Chinese path containing spaces and URL-special characters.
+  // Remove the originals before restarting to prove rendering uses the saved copy.
+  const source = path.join(dataDir, "待导入 #素材", "角色 动画");
+  await cp(path.resolve("resources/examples/spineboy"), source, { recursive: true });
+  const skeletonPath = path.join(source, "spineboy-pro.json");
+  const skeleton = JSON.parse(await readFile(skeletonPath, "utf8"));
+  skeleton.skeleton.hash += "-windows-import-test";
+  await writeFile(skeletonPath, JSON.stringify(skeleton));
+  await rename(skeletonPath, path.join(source, "中文 角色.json"));
+  const imported = await page.evaluate(paths => window.shelf.importPaths(paths), [source]);
+  assert.deepEqual(imported.errors, []);
+  assert.equal(imported.added.length, 1);
+  await rm(source, { recursive: true });
   await app.close();
   page = await launch();
   data = await page.evaluate(() => window.shelf.getLibrary());
+  assert.equal(data.assets.length, 5);
+  await page.getByRole("button", { name: "预览 中文 角色", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector(".ready-dot")?.textContent === "已就绪");
+  await verifyPixels(page);
   const persisted = data.assets.find((a) => a.name === "spineboy-pro");
   assert.equal(persisted.favorite, true);
   assert.equal(persisted.note, "重启后应保留");
@@ -137,7 +186,7 @@ try {
   await page.screenshot({ path: "test-results/desktop.png" });
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: rendering, playback, timeline, grouping, favorites, tags, search, views, deduplication and restart persistence",
+    "PASS: platform shortcuts/window controls, rendering, playback, timeline, grouping, favorites, tags, search, views, deduplication, Chinese folder import and restart persistence",
   );
 } finally {
   if (app) await app.close().catch(() => {});

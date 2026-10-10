@@ -8,7 +8,7 @@
 
 中文桌面端 Spine 动画资源管理与预览工具。导入整个文件夹，自动识别骨骼、图集和图片，在本地保存、分类、搜索与预览，无需每次重新打开文件。
 
-[下载 v1.0.0](https://github.com/myricaRuba/spine-shelf/releases/tag/v1.0.0) · [更新记录](CHANGELOG.md) · [反馈问题](https://github.com/myricaRuba/spine-shelf/issues) · [参与贡献](CONTRIBUTING.md)
+[下载 v1.1.0](https://github.com/myricaRuba/spine-shelf/releases/tag/v1.1.0) · [更新记录](CHANGELOG.md) · [反馈问题](https://github.com/myricaRuba/spine-shelf/issues) · [参与贡献](CONTRIBUTING.md)
 
 ![Spine Shelf 桌面资源库与动画预览](docs/images/screenshot.png)
 
@@ -27,15 +27,19 @@ _截图使用 Esoteric Software 官方演示素材。_
 
 ## 下载与安装
 
-首个公开版本为 **v1.0.0**，提供 **macOS Apple Silicon（M 系列芯片）** 安装包：
+当前版本 **v1.1.0**，在 [Releases](https://github.com/myricaRuba/spine-shelf/releases/latest) 选择对应安装包：
 
-1. 在 [Releases](https://github.com/myricaRuba/spine-shelf/releases/latest) 下载 DMG 文件。
-2. 打开安装包，将 Spine Shelf 拖入「应用程序」。
-3. 启动后导入文件夹，或将文件夹直接拖入窗口。
+| 系统 / 处理器 | 安装包 | 安装方式 |
+| --- | --- | --- |
+| **Windows 11 · Intel / AMD（x64）** | `Spine-Shelf-1.1.0-Windows-x64-Setup.exe` | 双击安装，可选择目录，默认安装给当前用户 |
+| **Windows 11 · ARM（如 Snapdragon）** | `Spine-Shelf-1.1.0-Windows-arm64-Setup.exe` | 双击安装，使用原生 ARM64 版本 |
+| **macOS · Apple Silicon（M 系列）** | `Spine-Shelf-1.1.0-macOS-arm64.dmg` | 打开后拖入「应用程序」 |
 
-安装包目前没有 Apple Developer ID 签名或公证。如果 macOS 阻止首次打开，可在「系统设置 → 隐私与安全性」中允许打开。Release 同时提供 SHA-256 校验文件。
+安装完成后，从桌面或开始菜单启动，导入文件夹或将文件夹拖入窗口。Windows 保留原生最小化、最大化和关闭按钮，快捷键显示为 Ctrl，并通过文件资源管理器打开资源库。卸载程序保留用户资源库。
 
-Windows 打包脚本已提供，但 v1 尚未验证 Windows 安装与运行，也不提供已验证的 Windows 安装包。
+安装包暂未购买代码签名证书：Windows 首次运行可能显示「未知发布者」或 SmartScreen 提示；macOS 包尚未经过 Developer ID 签名或公证。请核对下载仓库和 Release 附带的 `SHA256SUMS.txt`。macOS 阻止首次打开时，可在「系统设置 → 隐私与安全性」允许打开。
+
+自动化验证环境为 Windows Server 2025 x64、Windows 11 ARM64 和 macOS Apple Silicon，包含安装后的动画渲染与重启持久化。普通 Intel / AMD Windows 11 实机的显卡和显示缩放组合尚未逐一验证。Intel Mac 暂无安装包。
 
 ## 支持的素材
 
@@ -85,10 +89,15 @@ Windows 打包脚本已提供，但 v1 尚未验证 Windows 安装与运行，�
 
 ## 数据与备份
 
-在「资源库设置」中查看实际存储位置。macOS 默认目录为：
+在「资源库设置」中查看实际存储位置。默认根目录：
+
+- Windows：`%APPDATA%\Spine Shelf\Library\`
+- macOS：`~/Library/Application Support/Spine Shelf/Library/`
+
+目录内部结构相同，可退出应用后将整个 `Library` 文件夹复制到另一台电脑或另一个系统：
 
 ```text
-~/Library/Application Support/Spine Shelf/Library/
+Library/
   library.json         # 素材索引、分类、分组、收藏、标签和备注
   library.json.bak     # 上一次成功写入前的索引备份
   assets/<uuid>/       # 每份素材的完整副本和缩略图
@@ -121,11 +130,12 @@ npm run test:layout         # 面板调宽、宽度记忆和按钮提示
 npm run test:compat         # 5 个版本 × JSON/SKEL 的实际像素渲染
 npm run package            # 本机架构 macOS .app
 npm run dist:mac           # macOS DMG
-npm run dist:win           # Windows NSIS，建议在 Windows 上构建和验证
-npm run build:icons        # 在 macOS 从 Logo 母版生成各尺寸图标
+npm run dist:win           # Windows x64 NSIS 安装包，在 Windows 上构建
+npm run dist:win:arm64     # Windows ARM64 NSIS 安装包
+npm run build:icons        # 在 macOS 从 Logo 母版生成 PNG、ICNS、ICO
 ```
 
-桌面测试需要图形环境并使用独立临时资源库，不修改用户数据。兼容性测试首次运行会从官方 GitHub 下载素材至 `test-results/fixtures`。`SPINE_SHELF_DATA` 可指定独立用户数据目录。CI 执行单元测试与生产构建。
+桌面测试需要图形环境并使用独立临时资源库，不修改用户数据。兼容性测试首次运行会从官方 GitHub 下载素材至 `test-results/fixtures`。`SPINE_SHELF_DATA` 可指定独立用户数据目录。常规 CI 在 Linux 和 Windows 执行单元测试与生产构建；`Desktop packages` 工作流在 Windows x64、Windows 11 ARM64 和 macOS 上构建并验证安装包，可手动触发生成 Release 草稿。
 
 ## 项目结构
 

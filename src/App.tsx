@@ -65,6 +65,8 @@ const categoryIcons = {
   material: Shapes,
   unclassified: CircleHelp,
 };
+const isMac = window.shelf?.platform === "darwin";
+const shortcutKey = isMac ? "⌘" : "Ctrl";
 
 export default function App() {
   const [library, setLibrary] = useState<Library>(emptyLibrary),
@@ -332,7 +334,7 @@ export default function App() {
   };
   return (
     <div
-      className="app"
+      className={`app ${isMac ? "platform-mac" : "platform-windows"}`}
       onDragEnter={(event) => {
         if (event.dataTransfer.types.includes("Files")) {
           event.preventDefault();
@@ -601,7 +603,7 @@ export default function App() {
                   <X size={13} />
                 </button>
               ) : (
-                <kbd>⌘ K</kbd>
+                <kbd>{shortcutKey} K</kbd>
               )}
             </div>
             <div className="toolbar-select">
@@ -1082,7 +1084,7 @@ export default function App() {
                   onClick={() => window.shelf.reveal()}
                 >
                   <FolderOpen size={16} />
-                  在访达中打开
+                  {isMac ? "在访达中打开" : "在文件资源管理器中打开"}
                 </button>
                 <div className="settings-note">
                   <b>备份资源库</b>
@@ -1150,10 +1152,10 @@ export default function App() {
                 </div>
                 <div className="shortcut-row">
                   <span>
-                    <kbd>⌘ O</kbd> 导入
+                    <kbd>{shortcutKey} O</kbd> 导入
                   </span>
                   <span>
-                    <kbd>⌘ K</kbd> 搜索
+                    <kbd>{shortcutKey} K</kbd> 搜索
                   </span>
                   <span>
                     <kbd>空格</kbd> 播放

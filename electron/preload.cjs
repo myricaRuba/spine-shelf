@@ -1,5 +1,6 @@
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 contextBridge.exposeInMainWorld("shelf", {
+  platform: process.platform,
   getLibrary: () => ipcRenderer.invoke("library:get"),
   importDialog: (kind, collectionId) =>
     ipcRenderer.invoke("library:import-dialog", kind, collectionId),

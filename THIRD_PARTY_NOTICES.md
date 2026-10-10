@@ -43,4 +43,4 @@ The original Spine Shelf icon was generated with the built-in imagegen tool and 
 
 ## Distribution layout
 
-The desktop package includes `LICENSE`, `THIRD_PARTY_NOTICES.md`, `licenses/`, and the examples' original `LICENSE` in its resources directory. On macOS these are under `Spine Shelf.app/Contents/Resources/`. Keep these materials with redistributed builds.
+The desktop package includes `LICENSE`, `THIRD_PARTY_NOTICES.md`, `licenses/`, and the examples' original `LICENSE` in its resources directory. On macOS these are under `Spine Shelf.app/Contents/Resources/`. On Windows they are under `<installation directory>/resources/`. Keep these materials with redistributed builds.

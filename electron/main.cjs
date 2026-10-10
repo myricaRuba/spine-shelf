@@ -15,6 +15,9 @@ const { pathToFileURL } = require("node:url");
 const { Library } = require("./library.cjs");
 
 app.setName("Spine Shelf");
+const isMac = process.platform === "darwin";
+if (process.platform === "win32")
+  app.setAppUserModelId("studio.spineshelf.desktop");
 if (process.env.SPINE_SHELF_DATA)
   app.setPath("userData", process.env.SPINE_SHELF_DATA);
 protocol.registerSchemesAsPrivileged([
@@ -64,8 +67,23 @@ function createWindow() {
     minHeight: 720,
     title: "Spine Shelf",
     backgroundColor: "#111318",
-    titleBarStyle: "hiddenInset",
-    trafficLightPosition: { x: 20, y: 21 },
+    ...(isMac
+      ? {
+          titleBarStyle: "hiddenInset",
+          trafficLightPosition: { x: 20, y: 21 },
+        }
+      : {
+          titleBarStyle: "hidden",
+          titleBarOverlay: {
+            color: "#17191e",
+            symbolColor: "#b5bac1",
+            height: 54,
+          },
+          autoHideMenuBar: true,
+          icon: app.isPackaged
+            ? path.join(process.resourcesPath, "icon.ico")
+            : path.join(__dirname, "../resources/icon.ico"),
+        }),
     show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -191,7 +209,7 @@ app
       )
         throw new Error("截图无效。");
       const result = await dialog.showSaveDialog(mainWindow, {
-        defaultPath: asset.name.replace(/[/\\:]/g, "-") + ".png",
+        defaultPath: asset.name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "-") + ".png",
         filters: [{ name: "PNG 图片", extensions: ["png"] }],
       });
       if (result.canceled) return false;
@@ -204,15 +222,15 @@ app
     Menu.setApplicationMenu(
       Menu.buildFromTemplate([
         {
-          label: "Spine Shelf",
-          submenu: [
+          label: isMac ? "Spine Shelf" : "文件",
+          submenu: isMac ? [
             { role: "about" },
             { type: "separator" },
             { role: "hide" },
             { role: "hideOthers" },
             { type: "separator" },
             { role: "quit" },
-          ],
+          ] : [{ role: "about" }, { type: "separator" }, { role: "quit" }],
         },
         {
           label: "编辑",
