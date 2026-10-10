@@ -1,6 +1,6 @@
 {
   "name": "spine-shelf",
-  "version": "1.3.2",
+  "version": "1.4.0",
   "description": "Spine Shelf — 本地 Spine 动画资源库与桌面预览器",
   "private": true,
   "type": "module",
@@ -29,6 +29,7 @@
     "test:compat": "node scripts/compatibility.mjs",
     "test:reskin": "node scripts/reskin-smoke.mjs",
     "test:codex": "node scripts/codex-direct-smoke.mjs",
+    "test:projects": "node scripts/projects-smoke.mjs",
     "test:classification": "node scripts/classification-smoke.mjs",
     "test:layout": "node scripts/layout-smoke.mjs",
     "package": "npm run build && electron-builder --mac dir",
@@ -47,6 +48,7 @@
     "spine41": "npm:@esotericsoftware/spine-webgl@4.1.56",
     "spine42": "npm:@esotericsoftware/spine-webgl@4.2.120",
     "spine43": "npm:@esotericsoftware/spine-webgl@4.3.13",
+    "yazl": "3.3.1",
     "zod": "4.6.5"
   },
   "devDependencies": {
@@ -57,7 +59,8 @@
     "electron-builder": "26.15.6",
     "playwright": "^1.58.0",
     "typescript": "~5.9.3",
-    "vite": "8.3.4"
+    "vite": "8.3.4",
+    "yauzl": "3.4.0"
   },
   "build": {
     "appId": "studio.spineshelf.desktop",

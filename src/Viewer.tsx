@@ -39,6 +39,8 @@ interface Props {
   notify: (message: string) => void;
   onClassify: (id: string) => Promise<void>;
   classifying: boolean;
+  preferredSkin?: string;
+  onProject:(assetId:string,projectId?:string)=>void;
 }
 export default function Viewer({
   asset,
@@ -48,6 +50,7 @@ export default function Viewer({
   notify,
   onClassify,
   classifying,
+  preferredSkin,onProject,
 }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null),
     engine = useRef<SpineEngine | null>(null);
@@ -141,6 +144,10 @@ export default function Viewer({
       engine.current = null;
     };
   }, [asset.id, asset.pma, asset.contentRevision, retry]);
+  useEffect(()=>{
+    const instance=engine.current;
+    if(!loading && preferredSkin && instance?.data?.findSkin(preferredSkin)) {instance.setSkin(preferredSkin);setSkin(preferredSkin);}
+  },[preferredSkin,loading]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -588,6 +595,14 @@ export default function Viewer({
       </div>
       {tab === "info" && (
         <div className="info-panel">
+          <section className="asset-projects" aria-label="用于项目">
+            <div><strong>用于项目</strong><button className="text-button" onClick={()=>onProject(asset.id)}>加入项目</button></div>
+            {library.projects.filter(p=>p.members.some(m=>m.assetId===asset.id)).map(p=>{
+              const m=p.members.find(m=>m.assetId===asset.id)!;
+              return <button className="asset-project-chip" key={p.id} onClick={()=>onProject(asset.id,p.id)}>{p.name}<span>{p.categories.find(c=>c.id===m.categoryId)?.name} · {m.skin}</span></button>;
+            })}
+            {!library.projects.some(p=>p.members.some(m=>m.assetId===asset.id)) && <p>尚未加入游戏项目</p>}
+          </section>
           <ReskinPanel key={asset.id} asset={asset} skin={skin} notify={notify} showSkin={(name) => {
             const instance = engine.current;
             if (!instance?.skeleton || !instance.data.findSkin(name)) { notify("皮肤正在加载，请稍后再试"); return; }

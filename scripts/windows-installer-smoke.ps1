@@ -28,6 +28,9 @@ try {
   $env:SPINE_SHELF_EXECUTABLE = Join-Path $installDir 'Spine Shelf.exe'
   npm run test:e2e
   if ($LASTEXITCODE -ne 0) { throw 'Installed application smoke test failed.' }
+  $env:SPINE_TEST_APP = $env:SPINE_SHELF_EXECUTABLE
+  npm run test:projects
+  if ($LASTEXITCODE -ne 0) { throw 'Installed application project export test failed.' }
   # Installing the same version again exercises the existing-install path.
   Install-App
   $uninstaller = Get-ChildItem "$installDir/*Uninstall*.exe" | Select-Object -First 1
@@ -39,5 +42,6 @@ try {
   Write-Host 'PASS: install, start menu shortcut, bundled notices, installed app E2E, reinstall and uninstall with library retention'
 } finally {
   Remove-Item Env:SPINE_SHELF_EXECUTABLE -ErrorAction SilentlyContinue
+  Remove-Item Env:SPINE_TEST_APP -ErrorAction SilentlyContinue
   Remove-Item $marker -ErrorAction SilentlyContinue
 }

@@ -38,6 +38,7 @@ Demonstration characters, textures, skeletons, and atlas data belong to Esoteric
 | Zod          | 4.6.5                        | [MIT](licenses/zod.txt) |
 | pngjs        | 7.0.0                        | [MIT](licenses/pngjs.txt) |
 | smol-toml    | 1.9.1                        | [BSD-3-Clause](licenses/smol-toml.txt) |
+| yazl         | 3.3.1                        | [MIT](licenses/yazl.txt) |
 
 Exact dependency versions and integrity hashes are locked in `package-lock.json`. Development-only tools retain the licenses in their respective packages.
 

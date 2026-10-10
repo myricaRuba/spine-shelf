@@ -110,6 +110,9 @@ class Library {
       await this.save();
     }
     let migrated = false;
+    if (this.data.projects === undefined) {this.data.projects=[];migrated=true;}
+    if (!Array.isArray(this.data.projects) || this.data.projects.some(p=>!p || typeof p.id!=='string' || typeof p.name!=='string' || !Array.isArray(p.categories) || !Array.isArray(p.members)))
+      throw new Error('项目索引无法读取，请保留 library.json 并恢复备份。');
     for (const asset of this.data.assets) {
       if (
         asset.classificationVersion === CLASSIFIER_VERSION ||
@@ -443,6 +446,8 @@ class Library {
     return this.snapshot();
   }
   async remove(id) {
+    const usedBy=this.data.projects.filter(p=>p.members.some(m=>m.assetId===id));
+    if(usedBy.length)throw new Error(`该素材正在用于项目「${usedBy.map(p=>p.name).join('、')}」，请先从项目移出。`);
     this.asset(id);
     this.data.assets = this.data.assets.filter((a) => a.id !== id);
     // Commit the index first; keep a recoverable copy of removed assets.

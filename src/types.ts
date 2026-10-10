@@ -58,8 +58,17 @@ export interface Library {
   version: number;
   assets: Asset[];
   collections: { id: string; name: string }[];
+  projects: GameProject[];
   root: string;
 }
+export interface ProjectMember {assetId:string;categoryId:string;skin:string;label:string;note:string;addedAt:string;}
+export interface GameProject {
+  id:string;name:string;note:string;createdAt:string;updatedAt:string;
+  categories:{id:string;name:string}[];members:ProjectMember[];
+}
+export type ProjectAction = "create"|"rename"|"remove"|"category"|"removeCategory"|"add"|"member"|"removeMembers";
+export interface ProjectInput {projectId?:string;name?:string;note?:string;categoryId?:string;assetId?:string;assetIds?:string[];skin?:string;label?:string;}
+export interface ProjectExportProgress {projectId:string;completed:number;total:number;name:string;phase:"copying"|"packing";}
 export interface ReskinProgressEntry {
   id: string;
   at?: string;
@@ -87,6 +96,9 @@ export interface ImportReport {
 export interface ShelfAPI {
   readonly platform: string;
   getLibrary(): Promise<Library>;
+  projectMutate(action:ProjectAction,input:ProjectInput):Promise<{library:Library;projectId:string}>;
+  projectExport(id:string):Promise<{path:string;assets:number;bytes:number;bakedSkins:number}|null>;
+  onProjectExportProgress(callback:(progress:ProjectExportProgress)=>void):()=>void;
   importDialog(
     kind: "folder" | "files",
     collectionId?: string,

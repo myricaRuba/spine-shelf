@@ -29,11 +29,13 @@ import {
   Mountain,
   Shapes,
   CircleHelp,
+  Download,
   X,
 } from "lucide-react";
 import Viewer from "./Viewer";
 import PreviewPane from "./PreviewPane";
 import Tooltips from "./Tooltips";
+import ProjectDialogs, {type ProjectDialogState} from "./ProjectDialogs";
 import { SpineEngine } from "./engine";
 import {
   type Asset,
@@ -43,6 +45,7 @@ import {
   formatSize,
   CATEGORY_LABELS,
   type Category,
+  type ProjectAction, type ProjectInput, type ProjectExportProgress,
 } from "./types";
 
 type Modal =
@@ -57,6 +60,7 @@ const emptyLibrary: Library = {
   version: 1,
   assets: [],
   collections: [],
+  projects: [],
   root: "",
 };
 const categoryIcons = {
@@ -86,6 +90,10 @@ export default function App() {
     [removeTarget, setRemoveTarget] = useState<Asset | null>(null);
   const [bootError, setBootError] = useState("");
   const [classifying, setClassifying] = useState(false);
+  const [projectDialog,setProjectDialog]=useState<ProjectDialogState|null>(null);
+  const [projectCategory,setProjectCategory]=useState('all');
+  const [batch,setBatch]=useState(false),[checkedAssets,setCheckedAssets]=useState<string[]>([]);
+  const [exporting,setExporting]=useState(false),[exportProgress,setExportProgress]=useState<ProjectExportProgress|null>(null);
   const searchRef = useRef<HTMLInputElement>(null),
     toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const libraryRef = useRef(library);
@@ -103,6 +111,7 @@ export default function App() {
     setLibrary(data);
   }, []);
   useEffect(() => window.shelf?.onLibraryChange(applyLibrary), [applyLibrary]);
+  useEffect(()=>window.shelf?.onProjectExportProgress(setExportProgress),[]);
   useEffect(() => {
     if (!window.shelf) {
       setBootError(
@@ -191,6 +200,11 @@ export default function App() {
     [applyLibrary, notify],
   );
   const collection = library.collections.find((c) => c.id === section);
+  const activeProject=library.projects.find(p=>`project:${p.id}`===section);
+  const projectMembers=new Map(activeProject?.members.map(m=>[m.assetId,m]) || []);
+  useEffect(()=>{
+    if(activeProject && !activeProject.members.some(m=>m.assetId===selectedId))setSelectedId(activeProject.members[0]?.assetId || '');
+  },[activeProject,selectedId]);
   const activeCategory = section.startsWith("category:")
     ? (section.slice(9) as Category)
     : null;
@@ -199,7 +213,7 @@ export default function App() {
       library.assets.filter(
         (a) =>
           section === "all" ||
-          (activeCategory
+          (activeProject ? activeProject.members.some(m=>m.assetId===a.id) : activeCategory
             ? (a.category || "unclassified") === activeCategory
             : section === "favorites"
               ? a.favorite
@@ -209,15 +223,16 @@ export default function App() {
                   ? !a.collectionId
                   : a.collectionId === section),
       ),
-    [library.assets, section, activeCategory],
+    [library.assets, section, activeCategory,activeProject],
   );
   const assets = useMemo(() => {
     const query = search.trim().toLowerCase();
     const filtered = scopeAssets.filter(
       (a) =>
+        (!activeProject || projectCategory==='all' || activeProject.members.find(m=>m.assetId===a.id)?.categoryId===projectCategory) &&
         (format === "all" || a.format === format) &&
         (!query ||
-          [a.name, ...a.tags, a.note, a.version]
+          [a.name, ...a.tags, a.note, a.version, activeProject?.members.find(m=>m.assetId===a.id)?.label,activeProject?.members.find(m=>m.assetId===a.id)?.note]
             .join(" ")
             .toLowerCase()
             .includes(query)),
@@ -229,7 +244,7 @@ export default function App() {
           ? b.size - a.size
           : b.importedAt.localeCompare(a.importedAt),
     );
-  }, [scopeAssets, search, format, sort]);
+  }, [scopeAssets, search, format, sort,activeProject,projectCategory]);
   const selected = library.assets.find((a) => a.id === selectedId);
   const totalSize = library.assets.reduce((n, a) => n + a.size, 0);
   const title =
@@ -243,6 +258,7 @@ export default function App() {
     )[section] ||
     (activeCategory && CATEGORY_LABELS[activeCategory]) ||
     collection?.name ||
+    activeProject?.name ||
     "动画资源库";
   const openImport = () => {
     setReport(null);
@@ -316,6 +332,19 @@ export default function App() {
   const changeSection = (value: string) => {
     setSection(value);
     setSearch("");
+    setProjectCategory('all');setBatch(false);setCheckedAssets([]);
+  };
+  const mutateProject=async(action:ProjectAction,input:ProjectInput)=>{
+    const result=await window.shelf.projectMutate(action,input);applyLibrary(result.library);return result.projectId;
+  };
+  const exportProject=async(id:string)=>{
+    setExporting(true);setExportProgress(null);
+    try {const result=await window.shelf.projectExport(id);if(result)notify(`已导出 ${result.assets} 份素材，${formatSize(result.bytes)}`);}
+    finally {setExporting(false);setExportProgress(null);}
+  };
+  const removeProjectMembers=async(ids:string[])=>{
+    if(!activeProject)return;
+    try{await mutateProject('removeMembers',{projectId:activeProject.id,assetIds:ids});setCheckedAssets([]);notify(`已从项目移出 ${ids.length} 份素材`);}catch(e){notify(String(e));}
   };
   const classifyAssets = async (id?: string) => {
     if (classifying) return;
@@ -402,6 +431,11 @@ export default function App() {
                 <Clock3 size={17} />
                 <span>最近导入</span>
               </button>
+            </nav>
+            <div className="nav-label collection-label">游戏项目<button className="icon-btn" aria-label="新建项目" data-tooltip="创建游戏素材项目" onClick={()=>setProjectDialog({mode:'create'})}><Plus size={15}/></button></div>
+            <nav className="collection-nav project-nav" aria-label="游戏项目">
+              {library.projects.map(p=><button key={p.id} aria-label={`项目：${p.name}`} className={activeProject?.id===p.id?'active':''} onClick={()=>changeSection(`project:${p.id}`)}><FolderOpen size={16}/><span>{p.name}</span><em>{p.members.length}</em></button>)}
+              {!library.projects.length && <button className="new-collection" onClick={()=>setProjectDialog({mode:'create'})}><FolderPlus size={15}/>创建第一个项目</button>}
             </nav>
             <div className="nav-label collection-label">
               内容分类
@@ -560,15 +594,15 @@ export default function App() {
               <HelpCircle size={17} />
             </button>
           </div>
-          <div className="workspace-heading">
+          <div className={`workspace-heading${activeProject?' project-workspace-heading':''}`}>
             <div>
               <div className="eyebrow">YOUR ANIMATION COLLECTION</div>
               <h1>
-                {title}
+                <b className="workspace-title" title={title}>{title}</b>
                 <span>{scopeAssets.length}</span>
               </h1>
               <p>
-                {activeCategory === "unclassified"
+                {activeProject ? activeProject.note || '挑选游戏素材，按用途整理后整包导出。' : activeCategory === "unclassified"
                   ? "内容线索不足的素材，可在资源信息中指定类别。"
                   : activeCategory === "material"
                     ? "边框、文字、按钮与其他界面素材。"
@@ -577,15 +611,25 @@ export default function App() {
                       : "导入即分类，让每一份创作都有归处。"}
               </p>
             </div>
-            <button
+            {activeProject ? <div className="project-heading-actions">
+              <button className="button" onClick={()=>setProjectDialog({mode:'picker',projectId:activeProject.id})}><Plus size={16}/>添加素材</button>
+              <button className="button primary" disabled={exporting || !activeProject.members.length} onClick={()=>setProjectDialog({mode:'export',projectId:activeProject.id})}><Download size={16}/>导出项目</button>
+            </div> : <button
               className="button primary"
               onClick={openImport}
               disabled={importing}
             >
               <Plus size={17} />
               导入资源
-            </button>
+            </button>}
           </div>
+          {activeProject && <div className="project-overview">
+            <div className="project-category-tabs" role="group" aria-label="项目分类筛选">
+              <button aria-pressed={projectCategory==='all'} onClick={()=>setProjectCategory('all')}>全部 <b>{activeProject.members.length}</b></button>
+              {activeProject.categories.map(c=><button key={c.id} aria-pressed={projectCategory===c.id} onClick={()=>setProjectCategory(c.id)}>{c.name}<b>{activeProject.members.filter(m=>m.categoryId===c.id).length}</b></button>)}
+            </div>
+            <button className="text-button" onClick={()=>setProjectDialog({mode:'settings',projectId:activeProject.id})}><Settings2 size={13}/>项目设置</button>
+          </div>}
           <div className="library-toolbar">
             <div className="search-field">
               <Search size={16} />
@@ -642,6 +686,7 @@ export default function App() {
               <span className="section-dot" />
               {search ? "搜索结果" : "全部素材"}
               <span className="muted">{assets.length} 份</span>
+              <button className="text-button" onClick={()=>{setBatch(!batch);setCheckedAssets([]);}}>{batch?'退出多选':'批量选择'}</button>
               {collection && (
                 <button
                   className="text-button"
@@ -665,6 +710,7 @@ export default function App() {
               <ChevronDown size={12} />
             </div>
           </div>
+          {batch && <div className="project-batch-bar"><span>已选 {checkedAssets.length} 份</span><button className="text-button" onClick={()=>setCheckedAssets(assets.map(a=>a.id))}>选择当前结果</button><button className="text-button" disabled={!checkedAssets.length} onClick={()=>setProjectDialog({mode:'assign',assetIds:checkedAssets})}>加入项目</button>{activeProject && <button className="text-button" disabled={!checkedAssets.length} onClick={()=>void removeProjectMembers(checkedAssets)}>移出项目</button>}</div>}
           <div className="library-scroll">
             {!loaded ? (
               <div className="empty-state">
@@ -691,6 +737,7 @@ export default function App() {
                     className={`asset-card ${selectedId === asset.id ? "selected" : ""} tint-${index % 4}`}
                     onClick={() => setSelectedId(asset.id)}
                     onKeyDown={(event) => {
+                      if(event.target!==event.currentTarget)return;
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault();
                         setSelectedId(asset.id);
@@ -711,6 +758,7 @@ export default function App() {
                         </div>
                       )}
                       <span className="version-pill">{asset.runtime}</span>
+                      {batch && <label className="project-card-check" onClick={e=>e.stopPropagation()}><input type="checkbox" aria-label={`选择 ${asset.name}`} checked={checkedAssets.includes(asset.id)} onChange={e=>setCheckedAssets(e.target.checked?[...checkedAssets,asset.id]:checkedAssets.filter(id=>id!==asset.id))}/></label>}
                       <button
                         aria-label={`${asset.favorite ? "取消收藏" : "收藏"} ${asset.name}`}
                         className={`card-favorite ${asset.favorite ? "is-favorite" : ""}`}
@@ -737,7 +785,7 @@ export default function App() {
                     </div>
                     <div className="asset-card-info">
                       <div className="asset-name">
-                        <h3 title={asset.name}>{asset.name}</h3>
+                        <h3 title={asset.name}>{projectMembers.get(asset.id)?.label || asset.name}</h3>
                         <span className="format-mini">
                           {asset.format.toUpperCase()}
                         </span>
@@ -765,20 +813,29 @@ export default function App() {
                           {asset.tags.join(" · ") || "—"}
                         </div>
                       )}
+                      <div className="project-card-footer">
+                        {activeProject ? <>
+                          <button className="text-button project-member-button" aria-label={`项目设置 ${asset.name}`} onClick={e=>{e.stopPropagation();setProjectDialog({mode:'member',projectId:activeProject.id,assetIds:[asset.id]});}} title="设置项目分类、名称和导出皮肤"><span>{activeProject.categories.find(c=>c.id===projectMembers.get(asset.id)?.categoryId)?.name}</span><span>{projectMembers.get(asset.id)?.skin}</span></button>
+                          <button className="icon-btn" aria-label={`移出项目 ${asset.name}`} onClick={e=>{e.stopPropagation();void removeProjectMembers([asset.id]);}}><X size={13}/></button>
+                        </> : <>
+                          <button className="text-button" aria-label={`加入项目 ${asset.name}`} onClick={e=>{e.stopPropagation();setProjectDialog({mode:'assign',assetIds:[asset.id]});}}><FolderPlus size={13}/>加入项目</button>
+                          <span className="project-used-count">{library.projects.filter(p=>p.members.some(m=>m.assetId===asset.id)).length || ''}{library.projects.some(p=>p.members.some(m=>m.assetId===asset.id))?' 个项目':''}</span>
+                        </>}
+                      </div>
                     </div>
                     {view === "list" && (
                       <ChevronRight size={15} className="list-arrow" />
                     )}
                   </article>
                 ))}
-                <button className="import-card" onClick={openImport}>
+                <button className="import-card" onClick={()=>activeProject?setProjectDialog({mode:'picker',projectId:activeProject.id}):openImport()}>
                   <span className="import-plus">
                     <Plus size={23} strokeWidth={1.5} />
                   </span>
-                  <strong>给灵感腾个位置</strong>
-                  <span>导入文件夹，建立你的素材库</span>
+                  <strong>{activeProject?'添加项目素材':'给灵感腾个位置'}</strong>
+                  <span>{activeProject?'从资源库挑选人物、地形和其他素材':'导入文件夹，建立你的素材库'}</span>
                   <small>
-                    支持拖拽添加 <ArrowRight size={12} />
+                    {activeProject?'打开素材选择':'支持拖拽添加'} <ArrowRight size={12} />
                   </small>
                 </button>
               </div>
@@ -794,14 +851,14 @@ export default function App() {
                   )}
                 </div>
                 <h3>
-                  {search || format !== "all"
+                  {activeProject ? (projectCategory==='all'?'这个项目还没有素材':'这个分类还没有素材') : search || format !== "all"
                     ? "没有找到匹配的资源"
                     : section === "favorites"
                       ? "把喜欢的动画留在这里"
                       : "你的下一个灵感，从这里开始"}
                 </h3>
                 <p>
-                  {search || format !== "all"
+                  {activeProject ? '从资源库加入素材，再设置分类与导出皮肤。' : search || format !== "all"
                     ? "试试其他关键词，或清除筛选条件。"
                     : section === "favorites"
                       ? "点击资源卡片上的星标，就能随时找回。"
@@ -821,9 +878,9 @@ export default function App() {
                   </button>
                 ) : (
                   section !== "favorites" && (
-                    <button className="button primary" onClick={openImport}>
+                    <button className="button primary" onClick={()=>activeProject?setProjectDialog({mode:'picker',projectId:activeProject.id}):openImport()}>
                       <Plus size={16} />
-                      导入资源
+                      {activeProject?'从资源库添加':'导入资源'}
                     </button>
                   )
                 )}
@@ -832,7 +889,7 @@ export default function App() {
             {!!library.assets.length && (
               <div className="library-note">
                 <Image size={14} />
-                一份素材，一处归属。导入后自动保留完整本地副本。
+                {activeProject?'项目引用资源库素材，可用于多个项目。':'导入后保留完整本地副本，可加入多个游戏项目。'}
               </div>
             )}
           </div>
@@ -861,6 +918,8 @@ export default function App() {
               notify={notify}
               onClassify={classifyAssets}
               classifying={classifying}
+              preferredSkin={activeProject?.members.find(m=>m.assetId===selected.id)?.skin}
+              onProject={(assetId,projectId)=>setProjectDialog({mode:projectId?'member':'assign',projectId,assetIds:[assetId]})}
             />
           ) : (
             <aside className="viewer-panel empty-preview">
@@ -875,6 +934,7 @@ export default function App() {
         </PreviewPane>
       </div>
       <Tooltips />
+      {projectDialog && <ProjectDialogs key={`${projectDialog.mode}:${projectDialog.projectId}:${projectDialog.assetIds?.join(',')}`} state={projectDialog} library={library} close={()=>setProjectDialog(null)} mutate={mutateProject} onCreated={id=>changeSection(id?`project:${id}`:'all')} onExport={exportProject} exportProgress={exportProgress}/>}
       {dragging && (
         <div className="drop-overlay">
           <div>
@@ -1092,7 +1152,7 @@ export default function App() {
                   <b>备份资源库</b>
                   <p>
                     退出应用后，复制整个 Library
-                    文件夹即可备份；其中包含素材、缩略图、分组和收藏记录。
+                    文件夹即可备份；其中包含素材、缩略图、游戏项目、分组和收藏记录。
                   </p>
                 </div>
                 <div className="settings-row">
@@ -1149,6 +1209,13 @@ export default function App() {
                       <p>
                         用收藏、分组、标签和备注整理资源。名称、标签和备注都支持搜索，重启后自动保留。
                       </p>
+                    </section>
+                  </div>
+                  <div>
+                    <b>05</b>
+                    <section>
+                      <h3>整理游戏项目，整包导出</h3>
+                      <p>从左侧「游戏项目」新建项目，批量添加素材，设置人物、地形等分类和导出皮肤。「导出项目」生成按分类保存的 ZIP，附资源清单。同一素材可以用于多个项目。</p>
                     </section>
                   </div>
                 </div>

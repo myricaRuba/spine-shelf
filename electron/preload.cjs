@@ -2,6 +2,12 @@ const { contextBridge, ipcRenderer, webUtils } = require("electron");
 contextBridge.exposeInMainWorld("shelf", {
   platform: process.platform,
   getLibrary: () => ipcRenderer.invoke("library:get"),
+  projectMutate: (action,input) => ipcRenderer.invoke('project:mutate',action,input),
+  projectExport: (id) => ipcRenderer.invoke('project:export',id),
+  onProjectExportProgress: (callback) => {
+    const listener=(_event,value)=>callback(value);ipcRenderer.on('project:export-progress',listener);
+    return ()=>ipcRenderer.removeListener('project:export-progress',listener);
+  },
   importDialog: (kind, collectionId) =>
     ipcRenderer.invoke("library:import-dialog", kind, collectionId),
   importPaths: (paths, collectionId) =>

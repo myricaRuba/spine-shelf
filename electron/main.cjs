@@ -17,6 +17,7 @@ const { Library } = require("./library.cjs");
 const { ReskinService } = require("./reskin.cjs");
 const { startReskinBridge } = require("./reskin-bridge.cjs");
 const { CodexRunner } = require("./codex-runner.cjs");
+const { ProjectService, filename } = require("./projects.cjs");
 
 app.setName("Spine Shelf");
 const isMac = process.platform === "darwin";
@@ -35,7 +36,7 @@ protocol.registerSchemesAsPrivileged([
     },
   },
 ]);
-let mainWindow, library, reskins, reskinBridge, codexRunner;
+let mainWindow, library, reskins, reskinBridge, codexRunner, projects;
 let queue = Promise.resolve();
 const enqueue = (task) => {
   const result = queue.then(task);
@@ -108,6 +109,7 @@ app
   .then(async () => {
     library = new Library(path.join(app.getPath("userData"), "Library"));
     await library.init();
+    projects = new ProjectService(library);
     reskins = new ReskinService(library, (libraryChanged) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         if (libraryChanged) mainWindow.webContents.send("library:changed", library.snapshot());
@@ -161,6 +163,17 @@ app
       (_contents, _permission, callback) => callback(false),
     );
     handler("library:get", () => library.snapshot());
+    handler("project:mutate", (action,input) => projects.mutate(action,input),true);
+    handler("project:export", async (id) => {
+      const project=projects.project(id);
+      if(!project.members.length)throw new Error('项目里还没有素材，请先从资源库添加。');
+      const destination=await dialog.showSaveDialog(mainWindow,{title:'导出项目素材包',defaultPath:filename(project.name)+'.zip',filters:[{name:'ZIP 素材包',extensions:['zip']}]});
+      if(destination.canceled || !destination.filePath)return null;
+      const result=await enqueue(()=>projects.export(id,destination.filePath,p=> {
+        if(mainWindow && !mainWindow.isDestroyed())mainWindow.webContents.send('project:export-progress',{projectId:id,...p});
+      }));
+      shell.showItemInFolder(result.path);return result;
+    });
     handler("reskin:status", async () => ({...reskinBridge.status(),codex:await codexRunner.status()}));
     handler("reskin:list", (assetId) => reskins.list({ assetId }));
     handler("reskin:details", (id) => codexRunner.details(id), true);

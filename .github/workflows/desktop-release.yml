@@ -80,6 +80,10 @@ jobs:
         run: npm run test:codex
         env:
           SPINE_TEST_APP: ${{ github.workspace }}/release/mac-arm64/Spine Shelf.app/Contents/MacOS/Spine Shelf
+      - name: Test project export and reimport from the packaged application
+        run: npm run test:projects
+        env:
+          SPINE_TEST_APP: ${{ github.workspace }}/release/mac-arm64/Spine Shelf.app/Contents/MacOS/Spine Shelf
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: installer-macos-arm64
