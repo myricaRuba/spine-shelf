@@ -19,9 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
-Scope: this license applies to original Spine Shelf code, documentation, and
-project artwork to the extent the contributors hold rights in them. It does
-not relicense third-party software or assets, including Spine Runtimes,
-public/vendor/spine38.js, resources/examples/, or third-party notices in
-licenses/. These retain their respective licenses. See THIRD_PARTY_NOTICES.md.
