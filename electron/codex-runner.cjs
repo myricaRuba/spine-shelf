@@ -23,6 +23,18 @@ async function findCodex(env = process.env) {
     '/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex',
     '/Applications/Codex.app/Contents/Resources/codex',
     path.join(os.homedir(),'Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex'));
+  if (process.platform === 'win32') {
+    const bin = path.join(env.LOCALAPPDATA || path.join(os.homedir(),'AppData','Local'),'OpenAI','Codex','bin');
+    candidates.push(path.join(bin,'codex.exe'));
+    try {
+      const entries = await fs.readdir(bin,{withFileTypes:true});
+      const installed = await Promise.all(entries.filter(entry=>entry.isDirectory()).map(async entry=>{
+        const file=path.join(bin,entry.name,'codex.exe');
+        try { return {file,modified:(await fs.stat(file)).mtimeMs}; } catch { return null; }
+      }));
+      candidates.push(...installed.filter(Boolean).sort((a,b)=>b.modified-a.modified).map(entry=>entry.file));
+    } catch { /* Desktop app is not installed in this location. */ }
+  }
   for (const dir of (env.PATH || '').split(path.delimiter)) if (dir) candidates.push(path.join(dir,process.platform === 'win32' ? 'codex.exe' : 'codex'));
   candidates.push(path.join(os.homedir(),'.local/bin/codex'));
   for (const file of candidates.filter(Boolean)) {
@@ -74,7 +86,7 @@ class CodexRunner {
     try { config = parse(await fs.readFile(path.join(home,'config.toml'),'utf8')); }
     catch (e) { if (e.code !== 'ENOENT') throw new Error('Codex 配置无法读取，请先修复配置后重试。'); }
     if (config.model_provider && config.model_provider !== 'openai') throw new Error('直接换肤需要 Codex 的 ChatGPT 登录与内置图片工具，请先切回 OpenAI 提供方。');
-    return { home, model:config.model, effort:config.model_reasoning_effort };
+    return { home, model:config.model, effort:config.model_reasoning_effort, windowsSandbox:config.windows?.sandbox === 'unelevated' ? 'unelevated' : 'elevated' };
   }
   async start(id) {
     if (this.closed) throw new Error('软件正在退出，请重新打开后重试。');
@@ -85,22 +97,29 @@ class CodexRunner {
       const job = this.service.task(id);
       if (this.runs.has(id)) throw new Error('这个任务已经在制作中。');
       if (!['queued','failed'].includes(job.status)) throw new Error('这个任务不能再次启动。');
-      if (await this.service.digest(this.service.library.asset(job.assetId)) !== job.sourceDigest) throw new Error('原资源已经变化，请取消旧任务并重新创建。');
+      if (!this.service.generation && await this.service.digest(this.service.library.asset(job.assetId)) !== job.sourceDigest) throw new Error('原资源已经变化，请取消旧任务并重新创建。');
       const run = { id, token:randomUUID(), child:null, lastMessage:'', failure:'', turnCompleted:false, logBytes:0 };
       job.execution = {runId:run.token,state:'running',startedAt:new Date().toISOString()};
       await this.service.update(id,'processing','正在启动 Codex…');
       this.runs.set(id,run); return run;
     });
     const job = this.service.task(id), cwd = this.service.dir(job);
-    const args = ['-a','never','exec','--ignore-user-config','--json','--skip-git-repo-check','--sandbox','workspace-write','-C',cwd];
+    // Select the current permission profile explicitly. The legacy --sandbox
+    // flag alone can leave newer CLI sessions on their default read-only profile.
+    const args = ['-a','never','exec','--ignore-user-config','--json','--skip-git-repo-check','-c','default_permissions=":workspace"','-C',cwd];
+    if (process.platform === 'win32') args.push('-c',`windows.sandbox=${JSON.stringify(config.windowsSandbox)}`);
     if (typeof config.model === 'string') args.push('-m',config.model);
     if (typeof config.effort === 'string') args.push('-c',`model_reasoning_effort=${JSON.stringify(config.effort)}`);
     const mcpArgs = [this.mcpScript,'--data-dir',this.userData,'--task-id',id,'--run-id',run.token];
+    if (this.service.generation) mcpArgs.push('--task-kind','generation');
     args.push('-c',`mcp_servers.spine-shelf.command=${JSON.stringify(this.mcpExecutable)}`,
       '-c',`mcp_servers.spine-shelf.args=${JSON.stringify(mcpArgs)}`,
       '-c','mcp_servers.spine-shelf.env.ELECTRON_RUN_AS_NODE="1"',
       '-c','mcp_servers.spine-shelf.required=true','-');
-    const prompt = `${this.service.handoff(id)}\n\n这是用户在 Spine Shelf 中点击「开始制作」后自动启动的任务。请直接完成，不要求用户再次复制内容或确认启动。使用内置 image_gen.imagegen；不要改用需要额外 API Key 的图片接口。先读取 ${path.join(config.home,'skills/spine-reskin/SKILL.md')} 及其中的 MCP 流程（存在时）。所有制作文件放在当前任务目录，source 快照只读。你可解包/重采样/回填图块，但造型重绘需使用内置图片工具。不要直接写 Library 索引或原资源。定期通过 spine_reskin_update_task 报告用户能理解的进度；读取附件、开始图片生成、生成返回、回填贴图、检查结果和提交前各报告一次，说明已完成什么和正在做什么，不编造百分比。耗时工具执行前先报告正在等待什么。全部图片校验完成后调用 spine_reskin_apply。若缺少能力或失败，报告 failed 和实际原因；不得把部分结果当作成功。任务目录已经有结果模板，直接开始。`;
+    const skillPath = path.join(config.home,'skills/spine-reskin/SKILL.md');
+    const hasSkill = await fs.access(skillPath).then(()=>true,()=>false);
+    const skillInstruction = hasSkill ? `可读取 ${skillPath} 中的补充制作流程。` : '本机未安装 spine-reskin 技能，无需读取或搜索此技能文件；直接遵循本任务和 MCP 返回的制作流程。';
+    const prompt = this.service.generation ? `${this.service.handoff(id)}\n这是用户点击「开始制作」后启动的任务，请直接执行。图片使用内置 image_gen.imagegen；缺少此工具时报告实际原因，不改用额外 API Key 接口。先 get_task 阅读 manifest 与 schema，制作所有要求的动作，不提交示例占位内容。` : `${this.service.handoff(id)}\n\n这是用户在 Spine Shelf 中点击「开始制作」后自动启动的任务。请直接完成，不要求用户再次复制内容或确认启动。使用内置 image_gen.imagegen；不要改用需要额外 API Key 的图片接口。${skillInstruction}所有制作文件放在当前任务目录，source 快照只读。你可解包/重采样/回填图块，但造型重绘需使用内置图片工具。不要直接写 Library 索引或原资源。定期通过 spine_reskin_update_task 报告用户能理解的进度；读取附件、开始图片生成、生成返回、回填贴图、检查结果和提交前各报告一次，说明已完成什么和正在做什么，不编造百分比。耗时工具执行前先报告正在等待什么。全部图片校验完成后调用 spine_reskin_apply。若缺少能力或失败，报告 failed 和实际原因；不得把部分结果当作成功。任务目录已经有结果模板，直接开始。`;
     run.log = path.join(cwd,'codex-events.jsonl');
     try {
       await fs.writeFile(run.log,'');
@@ -132,6 +151,7 @@ class CodexRunner {
   event(run,event) {
     const item = event.item || {};
     const entry = eventEntry(event);
+    if(this.service.generation && event.type==='turn.started' && entry)entry.text='开始读取 Spine 制作需求';
     // Keep a bounded diagnostic log without raw command output, image bytes or reasoning.
     const record={at:new Date().toISOString(),type:event.type,itemType:item.type,status:item.status,tool:item.tool || item.name};
     if (item.type==='agent_message') record.text=visibleText(item.text);
@@ -143,7 +163,7 @@ class CodexRunner {
     if (event.type==='turn.failed') run.failure=briefError(event.error?.message || event.message);
     if (item.type==='agent_message' && item.text) run.lastMessage=visibleText(item.text,1000);
     let message;
-    if(event.type==='turn.started') message='Codex 正在读取角色与换肤要求…';
+    if(event.type==='turn.started') message=this.service.generation?'Codex 正在读取 Spine 制作需求…':'Codex 正在读取角色与换肤要求…';
     if(item.type==='agent_message' && item.text && event.type==='item.completed') message=run.lastMessage;
     if(entry || event.type==='thread.started') void this.enqueue(async()=> {
       const job=this.service.task(run.id);
@@ -165,7 +185,7 @@ class CodexRunner {
       job.execution.state=job.status==='completed'?'completed':job.status==='cancelled'?'cancelled':'failed';
       job.execution.endedAt=new Date().toISOString();
       if(['queued','processing'].includes(job.status)) {
-        const reason=run.failure || (code!==0 ? stderr || `Codex 进程退出（${signal || code}）。` : `尚未提交完成的皮肤。${run.lastMessage}`);
+        const reason=run.failure || (code!==0 ? stderr || `Codex 进程退出（${signal || code}）。` : `尚未提交完成的${this.service.generation?'Spine':'皮肤'}。${run.lastMessage}`);
         await this.service.update(run.id,'failed',briefError(reason));
       } else {await this.service.save();this.service.changed(false);}
       await this.service.progress.settle(job);

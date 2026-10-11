@@ -12,9 +12,11 @@ const userData = arg >= 0 ? process.argv[arg + 1] : process.platform === 'darwin
 const taskArg=process.argv.indexOf('--task-id'), runArg=process.argv.indexOf('--run-id');
 const boundTask=taskArg>=0 ? process.argv[taskArg+1] : null;
 const runId=runArg>=0 ? process.argv[runArg+1] : null;
+const kindArg=process.argv.indexOf('--task-kind');
+const generationOnly=kindArg>=0&&process.argv[kindArg+1]==='generation';
 async function call(method, args) {
   if(boundTask) {
-    if(method==='create_task' || (args.taskId && args.taskId!==boundTask)) throw new Error('只能处理软件启动的当前换肤任务。');
+    if(method.endsWith('create_task') || method.startsWith('generate_')!==generationOnly || (args.taskId && args.taskId!==boundTask)) throw new Error('只能处理软件启动的当前制作任务。');
     args={...args,taskId:boundTask,...(runId?{runId}: {})};
   }
   let connection;
@@ -29,7 +31,7 @@ async function call(method, args) {
   return payload.result;
 }
 const server = new McpServer({ name: 'spine-shelf', version: require('../package.json').version }, {
-  instructions: '处理 Spine Shelf 的本地换肤任务。先 get_task 获取用户要求和快照，按 spine-reskin 技能使用 imagegen 重绘，写入该任务 result 内 PNG；保留 atlas 布局、尺寸、PMA 和所有骨骼动画。update_task 报告进度；apply 把新皮肤加入同一资源，禁止另建资源条目或直接修改 Library。图片生成由当前 Codex 会话执行，MCP 本身不生成图片。',
+  instructions: '处理 Spine Shelf 制作任务。spine_reskin_* 为已有角色换肤，保留图集与骨骼。spine_generate_* 从需求制作新 Spine 角色，生成透明部件 PNG 与 rig.json，apply 校验打包并导入新资源。先 get_task 读取要求，使用 imagegen 生成美术素材，通过 update_task 汇报进度，不直接修改 Library。',
 });
 const taskId = z.string().uuid();
 const definitions = [
@@ -41,11 +43,22 @@ const definitions = [
   ['spine_reskin_read_image', '查看此任务 source 或 result 目录内的 PNG 图片。', { taskId, area: z.enum(['source','result']), file: z.string().min(1) }, 'read_image', true],
   ['spine_reskin_apply', '校验 result 的 PNG 与原图集兼容并加入当前 Spine 的皮肤列表，保留原骨骼与所有已有皮肤。', { taskId }, 'apply', false],
 ];
+const generationDefinitions = [
+  ['spine_generate_list_tasks','列出从零制作 Spine 的任务。',{status:z.enum(['queued','processing','applying','completed','failed','cancelled']).optional()},'generate_list_tasks',true],
+  ['spine_generate_get_task','读取制作需求、部件和骨骼动画 manifest 格式及输出路径。',{taskId},'generate_get_task',true],
+  ['spine_generate_create_task','根据用户明确要求创建新 Spine 制作任务。animationRequirements 为每个动作的名称与具体内容；兼容旧 animations 名称列表。',{name:z.string().min(1).max(60),prompt:z.string().min(1).max(4000),animations:z.array(z.string()).min(1).max(32).optional(),animationRequirements:z.array(z.object({name:z.string().min(1).max(60),description:z.string().min(1).max(1000)})).min(1).max(32).optional()},'generate_create_task',false],
+  ['spine_generate_update_task','报告新 Spine 制作进度、失败或取消。',{taskId,status:z.enum(['queued','processing','failed','cancelled']),message:z.string().max(1000).optional()},'generate_update_task',false],
+  ['spine_generate_read_image','查看制作任务 result 内的透明部件 PNG。',{taskId,file:z.string().min(1)},'generate_read_image',true],
+  ['spine_generate_preview','编译制作文件并返回离线预览 HTML，可逐帧检查动作、骨骼与网格；不导入资源库。apply 前先检查预览。',{taskId},'generate_preview',false],
+  ['spine_generate_apply','校验部件与 rig.json，打包 Spine 4.2 JSON/atlas/PNG，通过运行库校验后加入资源库。重复提交不重复导入。',{taskId},'generate_apply',false],
+];
+if(!boundTask)definitions.push(...generationDefinitions);
+else if(generationOnly)definitions.splice(0,definitions.length,...generationDefinitions);
 for (const [name, description, inputSchema, method, readOnly] of definitions) {
-  server.registerTool(name, { description, inputSchema, annotations: { readOnlyHint: readOnly, destructiveHint: false, openWorldHint: false, idempotentHint: readOnly || method === 'apply' } }, async args => {
+  server.registerTool(name, { description, inputSchema, annotations: { readOnlyHint: readOnly, destructiveHint: false, openWorldHint: false, idempotentHint: readOnly || method.endsWith('apply') } }, async args => {
     try {
       const result = await call(method, args);
-      if (method === 'read_image') return { content: [result] };
+      if (method.endsWith('read_image')) return { content: [result] };
       return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
     } catch (e) { return { isError: true, content: [{ type: 'text', text: e.message }] }; }
   });

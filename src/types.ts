@@ -42,12 +42,16 @@ export interface Asset {
   reskins?: { name: string; baseSkin: string; atlas: string; taskId: string }[];
 }
 export interface ReskinJob {
+  animationRequirements?: {name:string;description:string}[];
+  kind?: 'generation';
+  animations?: string[];
   id: string;
   assetId: string;
   assetName: string;
   name: string;
   prompt: string;
   baseSkin: string;
+  replaceSkin?: string;
   status: "queued" | "processing" | "applying" | "completed" | "failed" | "cancelled";
   message: string;
   createdAt: string;
@@ -68,7 +72,16 @@ export interface GameProject {
 }
 export type ProjectAction = "create"|"rename"|"remove"|"category"|"removeCategory"|"add"|"member"|"removeMembers";
 export interface ProjectInput {projectId?:string;name?:string;note?:string;categoryId?:string;assetId?:string;assetIds?:string[];skin?:string;label?:string;}
-export interface ProjectExportProgress {projectId:string;completed:number;total:number;name:string;phase:"copying"|"packing";}
+export type SpineExportTarget = 'original'|'3.8'|'4.0'|'4.1'|'4.2'|'4.3';
+export interface ProjectExportOptions {targetVersion:SpineExportTarget;assetIds?:string[];skinMode?:'switchable'|'current';}
+export interface SpineConverterStatus {available:boolean;path:string;message:string;}
+export interface ProjectExportPlan {
+  targetVersion:SpineExportTarget;
+  skinMode:'switchable'|'current';
+  assets:{id:string;name:string;version:string;action:'copy'|'convert'|'blocked';message:string;skins:string[]}[];
+  converter:SpineConverterStatus;canExport:boolean;
+}
+export interface ProjectExportProgress {projectId:string;completed:number;total:number;name:string;phase:"copying"|"packing"|"converting";}
 export interface ReskinProgressEntry {
   id: string;
   at?: string;
@@ -94,10 +107,18 @@ export interface ImportReport {
   library: Library;
 }
 export interface ShelfAPI {
+  generationCapabilities():Promise<{actionTable:boolean;rigVersion?:number}>;
+  generationList():Promise<ReskinJob[]>;
+  generationDetails(taskId:string):Promise<ReskinDetails>;
+  generationCreate(input:{name:string;prompt:string;animationRequirements:{name:string;description:string}[]}):Promise<{job:ReskinJob;handoff:string}>;
+  generationStart(taskId:string):Promise<ReskinJob>;
+  generationCancel(taskId:string):Promise<ReskinJob>;
   readonly platform: string;
   getLibrary(): Promise<Library>;
   projectMutate(action:ProjectAction,input:ProjectInput):Promise<{library:Library;projectId:string}>;
-  projectExport(id:string):Promise<{path:string;assets:number;bytes:number;bakedSkins:number}|null>;
+  projectExport(id:string,options?:ProjectExportOptions):Promise<{path:string;assets:number;bytes:number;bakedSkins:number;converted:number}|null>;
+  projectExportPlan(id:string,options:ProjectExportOptions):Promise<ProjectExportPlan>;
+  projectSelectSpine():Promise<SpineConverterStatus|null>;
   onProjectExportProgress(callback:(progress:ProjectExportProgress)=>void):()=>void;
   importDialog(
     kind: "folder" | "files",
@@ -121,8 +142,10 @@ export interface ShelfAPI {
   onReskinChange(callback: () => void): () => void;
   reskinStatus(): Promise<{ available: boolean; lastConnectedAt: string | null; codex:{ready:boolean;message:string} }>;
   reskinList(assetId: string): Promise<ReskinJob[]>;
+  reskinCapabilities(): Promise<{manageSkins:boolean}>;
+  reskinRemove(assetId:string, name:string, expectedTaskId:string): Promise<{asset:Asset;fallbackSkin:string}>;
   reskinDetails(taskId: string): Promise<ReskinDetails>;
-  reskinCreate(input: { assetId: string; name: string; prompt: string; baseSkin: string }): Promise<{ job: ReskinJob; handoff: string }>;
+  reskinCreate(input: { assetId: string; name: string; prompt: string; baseSkin: string; replaceSkin?:string; expectedTaskId?:string }): Promise<{ job: ReskinJob; handoff: string }>;
   reskinStart(taskId:string):Promise<ReskinJob>;
   reskinCancel(taskId:string):Promise<ReskinJob>;
   reskinCopy(taskId: string): Promise<void>;

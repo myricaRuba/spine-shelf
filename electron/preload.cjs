@@ -3,7 +3,9 @@ contextBridge.exposeInMainWorld("shelf", {
   platform: process.platform,
   getLibrary: () => ipcRenderer.invoke("library:get"),
   projectMutate: (action,input) => ipcRenderer.invoke('project:mutate',action,input),
-  projectExport: (id) => ipcRenderer.invoke('project:export',id),
+  projectExport: (id,options) => ipcRenderer.invoke('project:export',id,options),
+  projectExportPlan: (id,options) => ipcRenderer.invoke('project:export-plan',id,options),
+  projectSelectSpine: () => ipcRenderer.invoke('project:spine-select'),
   onProjectExportProgress: (callback) => {
     const listener=(_event,value)=>callback(value);ipcRenderer.on('project:export-progress',listener);
     return ()=>ipcRenderer.removeListener('project:export-progress',listener);
@@ -30,11 +32,19 @@ contextBridge.exposeInMainWorld("shelf", {
   },
   reskinStatus: () => ipcRenderer.invoke("reskin:status"),
   reskinList: (assetId) => ipcRenderer.invoke("reskin:list", assetId),
+  reskinCapabilities: () => ipcRenderer.invoke("reskin:capabilities"),
+  reskinRemove: (assetId, name, expectedTaskId) => ipcRenderer.invoke("reskin:remove", assetId, name, expectedTaskId),
   reskinDetails: (id) => ipcRenderer.invoke("reskin:details", id),
   reskinCreate: (input) => ipcRenderer.invoke("reskin:create", input),
   reskinStart: (id) => ipcRenderer.invoke("reskin:start", id),
   reskinCancel: (id) => ipcRenderer.invoke("reskin:cancel", id),
   reskinCopy: (id) => ipcRenderer.invoke("reskin:copy", id),
+  generationList: () => ipcRenderer.invoke('generation:list'),
+  generationCapabilities: () => ipcRenderer.invoke('generation:capabilities'),
+  generationDetails: id => ipcRenderer.invoke('generation:details',id),
+  generationCreate: input => ipcRenderer.invoke('generation:create',input),
+  generationStart: id => ipcRenderer.invoke('generation:start',id),
+  generationCancel: id => ipcRenderer.invoke('generation:cancel',id),
   reskinUpdate: (id, status) => ipcRenderer.invoke("reskin:update", id, status),
   remove: (id) => ipcRenderer.invoke("library:remove", id),
   collection: (action, id, name) =>

@@ -24,7 +24,19 @@ const env={...process.env,SPINE_SHELF_TEST:'1',SPINE_SHELF_DATA:data};delete env
 const executablePath=process.env.SPINE_TEST_APP;
 const launch=()=>electron.launch({...executablePath?{executablePath,args:[]}:{args:['.']},env,cwd:process.cwd()});
 const zipPath=path.join(out,'森林冒险.zip');
-let app;
+let app, page;
+async function exportedManifest(file) {
+  return new Promise((resolve,reject)=>yauzl.open(file,{lazyEntries:true},(err,zip)=>{
+    if(err)return reject(err);zip.on('error',reject);zip.on('end',()=>reject(new Error('Missing export manifest')));
+    zip.on('entry',entry=>{
+      if(!entry.fileName.endsWith('/project.json'))return zip.readEntry();
+      zip.openReadStream(entry,(err,stream)=>{
+        if(err){zip.close();return reject(err);}const chunks=[];stream.on('error',reject);stream.on('data',b=>chunks.push(b));
+        stream.on('end',()=>{zip.close();try{resolve(JSON.parse(Buffer.concat(chunks).toString()));}catch(e){reject(e);}});
+      });
+    });zip.readEntry();
+  }));
+}
 async function frame(page){
   await page.getByRole('button',{name:'动画预览',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('.ready-dot')?.textContent==='已就绪');
@@ -36,7 +48,8 @@ async function frame(page){
   return page.locator('.stage canvas').evaluate(c=>c.toDataURL());
 }
 try {
-  app=await launch();let page=await app.firstWindow();
+  app=await launch();page=await app.firstWindow();
+  await page.locator('.asset-card').first().waitFor();
   await page.getByRole('button',{name:'新建项目',exact:true}).click();
   await page.getByLabel('项目名称',{exact:true}).fill('森林冒险');
   await page.getByLabel('项目备注',{exact:true}).fill('主角、地形和关卡素材');
@@ -68,9 +81,18 @@ try {
   await page.getByRole('button',{name:'预览 spineboy-pro',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('select[aria-label="皮肤"]')?.value==='导出测试皮肤');
   const before=await frame(page);
+  await page.getByLabel('皮肤',{exact:true}).selectOption('default');const originalBefore=await frame(page);
+  await page.getByLabel('皮肤',{exact:true}).selectOption('导出测试皮肤');
   await page.screenshot({path:path.join(out,'project.png')});
   await app.evaluate(({dialog,shell},file)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath:file});shell.showItemInFolder=()=>{};},zipPath);
   await page.getByRole('button',{name:'导出项目',exact:true}).click();
+  await page.getByRole('table',{name:'素材版本检查'}).waitFor();
+  await page.getByLabel('目标 Spine 版本').selectOption('3.8');
+  await page.getByText(/4.2 → 3.8 属于降级/).first().waitFor();
+  assert.equal(await page.getByRole('button',{name:'选择位置并导出',exact:true}).isEnabled(),false);
+  await page.getByLabel('目标 Spine 版本').selectOption('4.2');
+  await page.getByText('已匹配 Spine 4.2，保留原数据').first().waitFor();
+  await page.waitForFunction(()=>!document.querySelector('.project-dialog-export .modal-actions button')?.disabled);
   await page.screenshot({path:path.join(out,'export-dialog.png')});
   await page.getByRole('button',{name:'选择位置并导出',exact:true}).click();
   await page.getByRole('dialog').waitFor({state:'hidden'});
@@ -84,7 +106,44 @@ try {
     }));zip.readEntry();
   }));
   const manifest=JSON.parse(await fs.readFile(path.join(extract,'森林冒险/project.json'),'utf8'));
-  assert.equal(manifest.assets.length,2);assert.equal(manifest.assets.find(a=>a.id===hero.id).bakedSkin,true);
+  assert.equal(manifest.assets.length,2);const exportedHero=manifest.assets.find(a=>a.id===hero.id);
+  assert.equal(exportedHero.bakedSkin,false);assert.equal(exportedHero.skinMode,'switchable');assert.deepEqual(exportedHero.skins,['default','导出测试皮肤']);
+  assert.equal(exportedHero.runtimeSkin,'导出测试皮肤');assert.equal(exportedHero.textures.length,2);
+  assert.equal(manifest.targetVersion,'4.2');assert.ok(manifest.assets.every(a=>a.runtimeVersion==='4.2' && !a.converted));
+  // Export only the chosen member through the actual dialog and IPC, then inspect its ZIP.
+  const selectedZip=path.join(out,'森林冒险-按需.zip');
+  await app.evaluate(({dialog},file)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath:file});},selectedZip);
+  await page.getByRole('button',{name:'导出项目',exact:true}).click();
+  await page.getByRole('radio',{name:/按需导出/}).check();
+  await page.getByText('本次导出 0 / 2 份素材',{exact:true}).waitFor();
+  assert.equal(await page.getByRole('button',{name:'选择位置并导出',exact:true}).isEnabled(),false);
+  await page.getByRole('button',{name:'全选',exact:true}).click();
+  await page.getByLabel('导出 alien-pro',{exact:true}).uncheck();
+  await page.getByRole('radio',{name:/全部导出/}).check();
+  await page.getByText('本次导出 2 / 2 份素材',{exact:true}).waitFor();
+  await page.getByRole('radio',{name:/按需导出/}).check();
+  assert.equal(await page.getByLabel('导出 主角弓手',{exact:true}).isChecked(),true);
+  assert.equal(await page.getByLabel('导出 alien-pro',{exact:true}).isChecked(),false);
+  await page.getByLabel('搜索导出素材').fill('地形');
+  await page.getByRole('button',{name:'全选搜索结果',exact:true}).click();
+  await page.getByText('本次导出 2 / 2 份素材',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'清空选择',exact:true}).click();
+  await page.getByText('本次导出 0 / 2 份素材',{exact:true}).waitFor();
+  await page.getByLabel('搜索导出素材').fill('主角');
+  await page.getByRole('button',{name:'全选搜索结果',exact:true}).click();
+  await page.getByLabel('搜索导出素材').fill('');
+  await page.getByText('本次导出 1 / 2 份素材',{exact:true}).waitFor();
+  await page.waitForFunction(()=>!document.querySelector('.project-dialog-export .modal-actions button')?.disabled);
+  if(await page.getByLabel('关闭提示',{exact:true}).count())await page.getByLabel('关闭提示',{exact:true}).click();
+  const footer=await page.getByRole('button',{name:'选择位置并导出',exact:true}).boundingBox();
+  const dialogBounds=await page.getByRole('dialog').boundingBox();
+  assert.ok(footer && dialogBounds && footer.y>=dialogBounds.y && footer.y+footer.height<=dialogBounds.y+dialogBounds.height,'Export action stays visible while selecting');
+  await page.screenshot({path:path.join(out,'selective-export-dialog.png')});
+  await page.getByRole('button',{name:'选择位置并导出',exact:true}).click();
+  await page.getByRole('dialog').waitFor({state:'hidden'});
+  const selectedManifest=await exportedManifest(selectedZip);
+  assert.deepEqual(selectedManifest.assets.map(a=>a.id),[hero.id]);assert.equal(selectedManifest.assets[0].bakedSkin,false);
+  assert.equal(selectedManifest.categories.find(c=>c.id==='terrain').count,0);
   const current=await page.evaluate(()=>window.shelf.getLibrary());assert.equal(current.assets.length,2);assert.equal(current.projects[0].members.length,2);
   const imported=await page.evaluate(p=>window.shelf.importPaths([p]),extract);assert.deepEqual(imported.errors,[]);assert.equal(imported.added.length,2);
   const baked=imported.library.assets.find(a=>a.id===imported.added.find(id=>imported.library.assets.find(a=>a.id===id)?.animations.includes('walk')));
@@ -92,6 +151,10 @@ try {
   await page.reload();await page.getByLabel('搜索资源').fill('导出验证');
   await page.getByRole('button',{name:'预览 导出验证',exact:true}).click();
   const after=await frame(page);
+  assert.deepEqual(await page.getByLabel('皮肤',{exact:true}).locator('option').allTextContents(),['default','导出测试皮肤']);
+  await page.getByLabel('皮肤',{exact:true}).selectOption('default');const originalAfter=await frame(page);
+  assert.equal(originalAfter,originalBefore,'Original skin survives multi-skin export unchanged');
+  await page.getByLabel('皮肤',{exact:true}).selectOption('导出测试皮肤');
   const a=PNG.sync.read(Buffer.from(before.split(',')[1],'base64')),b=PNG.sync.read(Buffer.from(after.split(',')[1],'base64'));
   assert.equal(a.width,b.width);assert.equal(a.height,b.height);
   let changed=0;for(let i=0;i<a.data.length;i++)if(Math.abs(a.data[i]-b.data[i])>2)changed++;
@@ -108,6 +171,12 @@ try {
   await page.getByRole('dialog').getByRole('button',{name:'加入项目',exact:true}).click();
   await page.getByRole('button',{name:'项目：第二项目',exact:true}).click();await page.getByRole('button',{name:'移出项目 spineboy-pro',exact:true}).click();
   const final=await page.evaluate(()=>window.shelf.getLibrary());assert.equal(final.projects[0].members.length,2);assert.equal(final.projects[1].members.length,0);assert.equal(final.assets.length,4);
-  await fs.writeFile(path.join(out,'report.json'),JSON.stringify({passed:true,packaged:!!executablePath,assets:2,projects:2,exportedSkinPixelDifferences:changed,categories:manifest.categories,restartPreserved:true},null,2));
-  console.log('PASS: project UI, categories, selected AI skin ZIP → reimport identical pixels, restart, shared assets and independent removal.');
+  await fs.writeFile(path.join(out,'report.json'),JSON.stringify({passed:true,packaged:!!executablePath,assets:2,selectiveExportAssets:selectedManifest.assets.length,projects:2,exportedSkinPixelDifferences:changed,categories:manifest.categories,restartPreserved:true},null,2));
+  console.log('PASS: project UI, all/selective export with search and selection, selected AI skin ZIP → reimport identical pixels, restart, shared assets and independent removal.');
+} catch(error) {
+  if(page && !page.isClosed()) {
+    await page.screenshot({path:path.join(out,'failure.png')}).catch(()=>{});
+    await fs.writeFile(path.join(out,'failure.html'),await page.content()).catch(()=>{});
+  }
+  throw error;
 } finally {if(app)await app.close();await fs.rm(data,{recursive:true,force:true});}

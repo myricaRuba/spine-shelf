@@ -70,7 +70,9 @@ try {
   client=new Client({name:'spine-reskin-e2e',version:'1.0.0'});
   const transport=new StdioClientTransport({command:appPath||process.execPath,args:[appPath ? path.resolve(path.dirname(appPath),'../Resources/app.asar/electron/mcp-server.cjs') : path.resolve('electron/mcp-server.cjs'),'--data-dir',dataDir],env:appPath?{...process.env,ELECTRON_RUN_AS_NODE:'1'}:undefined,stderr:'pipe'});
   await client.connect(transport);
-  assert.equal((await client.listTools()).tools.length,7);
+  const tools=(await client.listTools()).tools;
+  assert.equal(tools.filter(tool=>tool.name.startsWith('spine_reskin_')).length,7);
+  assert.equal(tools.filter(tool=>tool.name.startsWith('spine_generate_')).length,7);
   const count=(await call('status')).assets;
   const evidence=[];
   for(let i=0;i<cases.length;i++) {

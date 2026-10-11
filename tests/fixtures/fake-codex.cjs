@@ -4,6 +4,8 @@ const args=process.argv.slice(2);
 if(args.includes('--help')) {console.log('--ignore-user-config');process.exit(0);}
 if(args.includes('login')) {console.log('Logged in using ChatGPT');process.exit(0);}
 const emit = value => process.stdout.write(JSON.stringify(value)+'\n');
+if (!args.includes('default_permissions=":workspace"') || args.includes('--sandbox')) throw new Error('Worker must explicitly select the workspace permission profile');
+if (process.platform==='win32' && !args.some(value=>/^windows\.sandbox="(elevated|unelevated)"$/.test(value))) throw new Error('Worker must configure the Windows sandbox');
 emit({type:'thread.started',thread_id:'fixture-codex-thread'});
 emit({type:'turn.started'});
 if(process.env.SPINE_FAKE_CODEX_MODE==='wait') {setInterval(()=>{},1000);}

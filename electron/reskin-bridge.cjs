@@ -3,7 +3,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { randomBytes, timingSafeEqual } = require('node:crypto');
 
-async function startReskinBridge({ service, userData, enqueue }) {
+async function startReskinBridge({ service, generation, userData, enqueue }) {
   const token = randomBytes(32).toString('hex');
   const descriptor = path.join(userData, 'spine-shelf-mcp.json');
   let lastConnectedAt = null;
@@ -16,6 +16,15 @@ async function startReskinBridge({ service, userData, enqueue }) {
     apply: args => service.apply(args.taskId),
     read_image: args => service.image(args.taskId, args.area, args.file),
   };
+  if(generation) Object.assign(handlers,{
+    generate_list_tasks: args=>({tasks:generation.list(args).filter(j=>!args.taskId||j.id===args.taskId)}),
+    generate_get_task: args=>generation.context(args.taskId),
+    generate_create_task: args=>generation.create(args),
+    generate_update_task: args=>generation.update(args.taskId,args.status,args.message),
+    generate_apply: args=>generation.apply(args.taskId),
+    generate_preview: args=>generation.preview(args.taskId),
+    generate_read_image: args=>generation.image(args.taskId,'result',args.file),
+  });
   const server = http.createServer(async (req, res) => {
     const reply = (status, value) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(value)); };
     const supplied = Buffer.from((req.headers.authorization || '').replace(/^Bearer /, ''));
@@ -30,7 +39,7 @@ async function startReskinBridge({ service, userData, enqueue }) {
       lastConnectedAt = new Date().toISOString();
       const result = await enqueue(() => {
         if(args.runId) {
-          const job=service.task(args.taskId);
+          const job=(method.startsWith('generate_')?generation:service).task(args.taskId);
           if(job.execution?.runId!==args.runId || job.execution.state!=='running') throw new Error('这次制作已停止或被重试任务替代。');
         }
         return handlers[method](args);

@@ -1,0 +1,13 @@
+[
+  {"name":"attack01","label":"攻击 1","description":"普通攻击：向前快速挥击，命中后收回，恢复战斗姿态。"},
+  {"name":"attack02","label":"攻击 2","description":"重击：短暂蓄力后大幅挥击，表现力量和身体重心变化。"},
+  {"name":"attack03","label":"攻击 3","description":"连击：连续两次不同方向的攻击，动作衔接流畅，最后收势。"},
+  {"name":"walk","label":"行走","description":"循环行走：双腿交替迈步，手臂自然摆动，身体随步伐轻微起伏，首尾衔接。"},
+  {"name":"born","label":"出生","description":"角色登场：从准备姿势起身或落地，站稳后进入待机姿态。"},
+  {"name":"death","label":"死亡","description":"失去支撑后倒下，表现身体下沉与无力，最后停留在倒地姿势。"},
+  {"name":"skill","label":"技能","description":"释放技能：先蓄力，再做出明显的施放动作，完成后恢复站姿。"},
+  {"name":"idle","label":"静止","description":"循环待机：保持站姿，胸腹轻微呼吸，头部和配件小幅自然摆动。"},
+  {"name":"hit01","label":"受到攻击 1","description":"轻度受击：上身短促后仰，身体轻微震动，然后迅速恢复。"},
+  {"name":"hit02","label":"受到攻击 2","description":"重度受击：身体明显后退或弯曲，失衡后重新站稳。"},
+  {"name":"out","label":"退出","description":"离场：收起战斗姿态，转身或向后撤离，动作自然结束。"}
+]

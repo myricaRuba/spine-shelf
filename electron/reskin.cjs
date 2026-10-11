@@ -4,6 +4,7 @@ const { randomUUID, createHash } = require('node:crypto');
 const { PNG } = require('pngjs');
 const { atlasPages } = require('./library.cjs');
 const { ReskinProgress, visibleText } = require('./reskin-progress.cjs');
+const { beginSkinChange, finishSkinChange, recoverSkinChanges } = require('./skin-storage.cjs');
 
 const ACTIVE = new Set(['queued', 'processing', 'applying']);
 const check = (ok, message) => { if (!ok) throw new Error(message); };
@@ -39,13 +40,16 @@ class ReskinService {
   }
   async init() {
     await fs.mkdir(this.root, { recursive: true });
+    await recoverSkinChanges(this.library);
     try { this.jobs = JSON.parse(await fs.readFile(this.index, 'utf8')); }
     catch (e) { if (e.code !== 'ENOENT') throw e; }
     check(Array.isArray(this.jobs), '换肤任务记录损坏，请保留备份。');
     for (const job of this.jobs.filter(j => j.status === 'applying')) {
       const committed = this.library.data.assets.find(a => a.id === job.assetId)?.reskins?.some(s => s.taskId === job.id);
       job.status = committed ? 'completed' : 'failed';
-      job.message = committed ? '新皮肤已添加' : '上次写入中断，原素材未更改，可以重试。';
+      job.message = committed ? (job.replaceSkin ? '皮肤已重新设计' : '新皮肤已添加') : '上次写入中断，原素材未更改，可以重试。';
+      const asset = this.library.data.assets.find(a => a.id === job.assetId);
+      if (asset) await atomicJSON(path.join(this.library.root, 'assets', asset.id, 'reskins.json'), { version: 1, skins: asset.reskins || [] });
     }
     await this.save();
   }
@@ -67,17 +71,65 @@ class ReskinService {
     for (const file of [...new Set(files)].sort()) hash.update(file).update(await fs.readFile(await safeFile(base, file)));
     return hash.update(JSON.stringify(asset.reskins || [])).update(String(asset.pma)).digest('hex');
   }
-  async create({ assetId, name, prompt, baseSkin }) {
+  nativeBase(asset, name) {
+    const visited = new Set();
+    let layer;
+    while ((layer = asset.reskins?.find(s => s.name === name))) {
+      check(!visited.has(name), '皮肤基础关系异常。');
+      visited.add(name); name = layer.baseSkin;
+    }
+    check(asset.skins.includes(name), '基础皮肤不存在。');
+    return name;
+  }
+  async remove(assetId, name, expectedTaskId) {
+    const asset = this.library.asset(assetId);
+    const layer = asset.reskins?.find(s => s.name === name);
+    check(layer, '只能删除新增皮肤，原始皮肤需要保留。');
+    check(layer.taskId === expectedTaskId, '这个皮肤已更新，请重新选择后删除。');
+    check(!this.jobs.some(j => j.assetId === assetId && ACTIVE.has(j.status)), '这个角色已有进行中的换肤任务，请先完成或取消。');
+    const fallbackSkin = layer.baseSkin;
+    this.nativeBase(asset, name);
+    const backup = await beginSkinChange(this.library, asset, layer, 'delete');
+    const previous = structuredClone(asset), projects = structuredClone(this.library.data.projects);
+    try {
+      const layers = asset.reskins.filter(s => s.name !== name).map(s => s.baseSkin === name ? { ...s, baseSkin: fallbackSkin } : s);
+      for (const project of this.library.data.projects) {
+        const members = project.members.filter(m => m.assetId === assetId && m.skin === name);
+        for (const member of members) member.skin = fallbackSkin;
+        if (members.length) project.updatedAt = new Date().toISOString();
+      }
+      Object.assign(asset, { reskins: layers, skins: asset.skins.filter(s => s !== name),
+        contentRevision: (asset.contentRevision || 0) + 1, thumbnail: false, size: Math.max(0, asset.size - backup.change.bytes) });
+      await atomicJSON(path.join(this.library.root, 'assets', assetId, 'reskins.json'), { version: 1, skins: layers });
+      await this.library.save();
+    } catch (e) {
+      for (const key of Object.keys(asset)) delete asset[key]; Object.assign(asset, previous);
+      this.library.data.projects = projects;
+      await finishSkinChange(this.library, backup).catch(() => {});
+      throw e;
+    }
+    await finishSkinChange(this.library, backup).catch(() => {});
+    this.changed(true);
+    return { asset, fallbackSkin };
+  }
+  async create({ assetId, name, prompt, baseSkin, replaceSkin, expectedTaskId }) {
     const asset = this.library.asset(assetId);
     check(typeof name === 'string' && name.trim().length > 0 && name.trim().length <= 60, '请填写 1–60 字的皮肤名称。');
     check(typeof prompt === 'string' && prompt.trim().length > 0 && prompt.length <= 4000, '请填写换肤要求（最多 4000 字）。');
     name = name.trim();
-    check(!asset.skins.includes(name), '这个皮肤名称已经存在，请换一个名称。');
+    const replacing = replaceSkin !== undefined;
+    const replaced = replacing && asset.reskins?.find(s => s.name === replaceSkin);
+    if (replacing) {
+      check(replaced && name === replaceSkin, '只能重新设计已有的新增皮肤，并保留原名称。');
+      check(replaced.taskId === expectedTaskId, '这个皮肤已更新，请重新打开设计窗口。');
+      check(baseSkin === replaceSkin || baseSkin === this.nativeBase(asset, replaceSkin), '重新设计请选择原始皮肤或当前皮肤作为绘制基础。');
+    } else check(!asset.skins.includes(name), '这个皮肤名称已经存在，请换一个名称。');
     check(asset.skins.includes(baseSkin), '请选择当前资源已有的基础皮肤。');
     check(!this.jobs.some(j => j.assetId === assetId && ACTIVE.has(j.status)), '这个角色已有进行中的换肤任务，请先完成或取消。');
     const job = { id: randomUUID(), assetId, assetName: asset.name, name, prompt: prompt.trim(), baseSkin,
       status: 'queued', message: '等待 Codex 处理', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       sourceDigest: await this.digest(asset), sourceRevision: asset.contentRevision || 0, version: asset.version, format: asset.format, pma: asset.pma };
+    if (replacing) Object.assign(job, { replaceSkin, replacesTaskId: replaced.taskId, targetBaseSkin: this.nativeBase(asset, replaceSkin) });
     const dir = this.dir(job), base = path.join(this.library.root, 'assets', assetId);
     await fs.mkdir(path.join(dir, 'source'), { recursive: true });
     await fs.mkdir(path.join(dir, 'result'), { recursive: true });
@@ -114,7 +166,7 @@ class ReskinService {
   }
   handoff(id) {
     const j = this.task(id);
-    return `请通过 spine-shelf MCP 处理换肤任务 ${j.id}。先调用 spine_reskin_get_task 获取任务和本地素材，再按 spine-reskin 技能完成。\n角色：${j.assetName}\n基础皮肤：${j.baseSkin}\n新皮肤：${j.name}\n要求：${j.prompt}\n只在该任务的 result 目录修改 PNG，保留图集布局、尺寸、旋转、透明度约定；不要修改骨骼或复制资源条目。完成后调用 spine_reskin_apply 写回同一 Spine，并验证皮肤切换。`;
+    return `请通过 spine-shelf MCP 处理换肤任务 ${j.id}。先调用 spine_reskin_get_task 获取任务和本地素材，按照 MCP 返回的 instructions 完成制作；spine-reskin 技能仅在已安装时作为补充。\n角色：${j.assetName}\n基础皮肤：${j.baseSkin}\n${j.replaceSkin ? '重新设计皮肤' : '新皮肤'}：${j.name}\n要求：${j.prompt}\n${j.replaceSkin ? '这次任务会在提交成功后替换同名皮肤，旧皮肤在制作期间保留；不要创建另一份任务或删除旧皮肤。\n' : ''}只在该任务的 result 目录修改 PNG，保留图集布局、尺寸、旋转、透明度约定；不要修改骨骼或复制资源条目。完成后调用 spine_reskin_apply 写回同一 Spine，并验证皮肤切换。`;
   }
   async context(id) {
     const job = this.task(id), asset = this.library.asset(job.assetId), dir = this.dir(job);
@@ -122,7 +174,7 @@ class ReskinService {
       sourceDir: path.join(dir, 'source'), resultDir: path.join(dir, 'result'),
       skeletonPath: path.join(dir, 'source', `skeleton.${job.format}`), atlasPath: path.join(dir, 'source/texture.atlas'),
       pages: Array.from({ length: job.pages }, (_, i) => ({ source: path.join(dir, 'source', `page-${i}.png`), result: path.join(dir, 'result', `page-${i}.png`) })),
-      instructions: '使用 imagegen 重绘指定部件，然后准确回填 result 内 PNG 的原区域；所有未修改部件保留。图集、骨骼与附件绑定不需修改。PMA 按任务 pma 字段处理，超分后回到原逻辑像素尺寸。不要直接写资源库，完成后调用 spine_reskin_apply；软件将创建原生 Skin/linked mesh 并在同一资源内切换。' };
+      instructions: '使用 imagegen 重绘指定部件，然后准确回填 result 内 PNG 的原区域；所有未修改部件保留。图集、骨骼与附件绑定不需修改。PMA 按任务 pma 字段处理，超分后回到原逻辑像素尺寸。不要直接写资源库，完成后调用 spine_reskin_apply；' + (job.replaceSkin ? '这是重新设计任务，软件会在验证后替换同名皮肤，失败时保留旧皮肤。' : '软件将创建原生 Skin/linked mesh 并在同一资源内切换。') };
   }
   async update(id, status, message = '', recordProgress = true) {
     const j = this.task(id);
@@ -148,7 +200,9 @@ class ReskinService {
     if (job.status === 'completed') return { job, asset: this.library.asset(job.assetId) };
     check(['queued', 'processing'].includes(job.status), '请先开始或重试这个任务。');
     const asset = this.library.asset(job.assetId);
-    check(!asset.skins.includes(job.name), '皮肤名称已存在。');
+    const replaced = job.replaceSkin && asset.reskins?.find(s => s.name === job.replaceSkin);
+    if (job.replaceSkin) check(replaced?.taskId === job.replacesTaskId, '原皮肤已删除或更新，请重新创建设计任务。');
+    else check(!asset.skins.includes(job.name), '皮肤名称已存在。');
     check(await this.digest(asset) === job.sourceDigest, '角色在制作期间已更改，请取消并重新创建任务。');
     const dir = this.dir(job);
     const sourceAtlas = await fs.readFile(await safeFile(path.join(dir, 'source'), 'texture.atlas'), 'utf8');
@@ -172,9 +226,11 @@ class ReskinService {
     const base = path.join(this.library.root, 'assets', asset.id);
     const target = path.join(base, 'reskins', job.id), staging = target + '.tmp';
     const previous = structuredClone(asset);
-    const layers = [...(asset.reskins || []), { name: job.name, baseSkin: job.baseSkin, atlas: `reskins/${job.id}/texture.atlas`, taskId: job.id }];
+    const layer = { name: job.name, baseSkin: job.targetBaseSkin || job.baseSkin, atlas: `reskins/${job.id}/texture.atlas`, taskId: job.id };
+    const layers = replaced ? asset.reskins.map(s => s.name === job.replaceSkin ? layer : s) : [...(asset.reskins || []), layer];
+    const backup = replaced ? await beginSkinChange(this.library, asset, replaced, 'redesign') : null;
     await atomicJSON(path.join(dir, 'asset-before.json'), previous);
-    job.status = 'applying'; job.message = '正在保存并添加新皮肤'; job.updatedAt = new Date().toISOString(); await this.save();
+    job.status = 'applying'; job.message = replaced ? '正在保存并替换皮肤' : '正在保存并添加新皮肤'; job.updatedAt = new Date().toISOString(); await this.save();
     await this.progress.record(job,{kind:'status',status:'info',text:job.message});
     try {
       await fs.rm(staging, { recursive: true, force: true });
@@ -184,20 +240,22 @@ class ReskinService {
       await fs.rm(target, { recursive: true, force: true }); // An interrupted, uncommitted attempt for this task only.
       await fs.rename(staging, target);
       await atomicJSON(path.join(base, 'reskins.json'), { version: 1, skins: layers });
-      Object.assign(asset, { reskins: layers, skins: [...asset.skins, job.name], contentRevision: (asset.contentRevision || 0) + 1,
-        thumbnail: false, size: asset.size + bytes });
+      Object.assign(asset, { reskins: layers, skins: replaced ? asset.skins : [...asset.skins, job.name], contentRevision: (asset.contentRevision || 0) + 1,
+        thumbnail: false, size: Math.max(0, asset.size - (backup?.change.bytes || 0)) + bytes });
       await this.library.save();
     } catch (e) {
       for (const k of Object.keys(asset)) delete asset[k]; Object.assign(asset, previous);
       await atomicJSON(path.join(base, 'reskins.json'), { version: 1, skins: previous.reskins || [] });
       await fs.rm(target, { recursive: true, force: true });
+      if (backup) await finishSkinChange(this.library, backup).catch(() => {});
       job.status = 'failed'; job.message = '写入失败，原素材已保留：' + visibleText(e.message,800); job.updatedAt = new Date().toISOString(); await this.save();
       await this.progress.record(job,{kind:'error',status:'failed',text:job.message}); throw e;
     }
-    job.status = 'completed'; job.message = '新皮肤已添加'; job.updatedAt = new Date().toISOString();
+    if (backup) await finishSkinChange(this.library, backup).catch(() => {});
+    job.status = 'completed'; job.message = replaced ? '皮肤已重新设计' : '新皮肤已添加'; job.updatedAt = new Date().toISOString();
     await this.save(); this.changed(true);
     await this.progress.record(job,{kind:'status',status:'completed',text:job.message});
-    return { job, asset, message: '新皮肤已添加到同一 Spine，可直接在皮肤下拉框切换。' };
+    return { job, asset, message: replaced ? '皮肤已重新设计，名称和项目引用保持不变。' : '新皮肤已添加到同一 Spine，可直接在皮肤下拉框切换。' };
   }
 }
 module.exports = { ReskinService, safeFile };

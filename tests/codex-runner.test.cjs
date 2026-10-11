@@ -8,7 +8,18 @@ const {PNG}=require('pngjs');
 const {Library}=require('../electron/library.cjs');
 const {ReskinService}=require('../electron/reskin.cjs');
 const {startReskinBridge}=require('../electron/reskin-bridge.cjs');
-const {CodexRunner,childEnvironment}=require('../electron/codex-runner.cjs');
+const {CodexRunner,childEnvironment,findCodex}=require('../electron/codex-runner.cjs');
+test('Windows finds the desktop bundled CLI without PATH or host variables',{skip:process.platform!=='win32'},async t=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'spine-codex-discovery-'));
+  t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  const bin=path.join(root,'OpenAI','Codex','bin');
+  const old=path.join(bin,'old','codex.exe'), latest=path.join(bin,'latest','codex.exe');
+  for(const file of [old,latest]) {await fs.mkdir(path.dirname(file),{recursive:true});await fs.writeFile(file,'fixture');}
+  await fs.utimes(old,new Date(1000),new Date(1000));
+  await fs.utimes(latest,new Date(2000),new Date(2000));
+  assert.equal(await findCodex({LOCALAPPDATA:root,PATH:''}),latest);
+  assert.equal(await findCodex({LOCALAPPDATA:root,PATH:'',SPINE_SHELF_CODEX:old}),old);
+});
 async function setup(t,mode='complete') {
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'spine-direct-test-'));
   const source=path.join(root,'source');await fs.mkdir(source);

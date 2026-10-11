@@ -17,7 +17,9 @@ const { Library } = require("./library.cjs");
 const { ReskinService } = require("./reskin.cjs");
 const { startReskinBridge } = require("./reskin-bridge.cjs");
 const { CodexRunner } = require("./codex-runner.cjs");
+const { GenerationService } = require("./generation.cjs");
 const { ProjectService, filename } = require("./projects.cjs");
+const { SpineConverter } = require('./spine-converter.cjs');
 
 app.setName("Spine Shelf");
 const isMac = process.platform === "darwin";
@@ -36,7 +38,7 @@ protocol.registerSchemesAsPrivileged([
     },
   },
 ]);
-let mainWindow, library, reskins, reskinBridge, codexRunner, projects;
+let mainWindow, library, reskins, reskinBridge, codexRunner, projects, generation, generationRunner;
 let queue = Promise.resolve();
 const enqueue = (task) => {
   const result = queue.then(task);
@@ -109,7 +111,9 @@ app
   .then(async () => {
     library = new Library(path.join(app.getPath("userData"), "Library"));
     await library.init();
-    projects = new ProjectService(library);
+    const spineConverter = new SpineConverter({settingsFile:path.join(app.getPath('userData'),'spine-converter.json')});
+    await spineConverter.init();
+    projects = new ProjectService(library,spineConverter);
     reskins = new ReskinService(library, (libraryChanged) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         if (libraryChanged) mainWindow.webContents.send("library:changed", library.snapshot());
@@ -119,7 +123,16 @@ app
     await reskins.init();
     codexRunner = new CodexRunner({service:reskins,enqueue,userData:app.getPath("userData")});
     await codexRunner.init();
-    reskinBridge = await startReskinBridge({ service: reskins, userData: app.getPath("userData"), enqueue });
+    generation = new GenerationService(library,(libraryChanged)=>{
+      if(mainWindow&&!mainWindow.isDestroyed()) {
+        if(libraryChanged)mainWindow.webContents.send('library:changed',library.snapshot());
+        mainWindow.webContents.send('reskin:changed');
+      }
+    });
+    await generation.init();
+    generationRunner = new CodexRunner({service:generation,enqueue,userData:app.getPath('userData')});
+    await generationRunner.init();
+    reskinBridge = await startReskinBridge({ service: reskins, generation, userData: app.getPath("userData"), enqueue });
     if (!library.data.seeded) {
       await seedExamples();
       library.data.seeded = true;
@@ -164,18 +177,29 @@ app
     );
     handler("library:get", () => library.snapshot());
     handler("project:mutate", (action,input) => projects.mutate(action,input),true);
-    handler("project:export", async (id) => {
+    handler('project:export-plan', (id,options) => projects.exportPlan(id,options));
+    handler('project:spine-select', async () => {
+      const selection=await dialog.showOpenDialog(mainWindow,{title:'选择 Spine 命令行程序',properties:['openFile'],...(process.platform==='win32'?{filters:[{name:'Spine 程序',extensions:['com','exe']}]}:{})});
+      if(selection.canceled || !selection.filePaths[0])return null;
+      return spineConverter.configure(selection.filePaths[0]);
+    });
+    handler("project:export", async (id,options={}) => {
       const project=projects.project(id);
       if(!project.members.length)throw new Error('项目里还没有素材，请先从资源库添加。');
+      const plan=await projects.exportPlan(id,options);
+      if(!plan.assets.length)throw new Error('请至少选择一份需要导出的素材。');
+      if(!plan.canExport)throw new Error(plan.assets.find(a=>a.action==='blocked')?.message || plan.converter.message);
       const destination=await dialog.showSaveDialog(mainWindow,{title:'导出项目素材包',defaultPath:filename(project.name)+'.zip',filters:[{name:'ZIP 素材包',extensions:['zip']}]});
       if(destination.canceled || !destination.filePath)return null;
       const result=await enqueue(()=>projects.export(id,destination.filePath,p=> {
         if(mainWindow && !mainWindow.isDestroyed())mainWindow.webContents.send('project:export-progress',{projectId:id,...p});
-      }));
+      },options));
       shell.showItemInFolder(result.path);return result;
     });
     handler("reskin:status", async () => ({...reskinBridge.status(),codex:await codexRunner.status()}));
     handler("reskin:list", (assetId) => reskins.list({ assetId }));
+    handler("reskin:capabilities", () => ({ manageSkins: true }));
+    handler("reskin:remove", (assetId, name, expectedTaskId) => reskins.remove(assetId, name, expectedTaskId), true);
     handler("reskin:details", (id) => codexRunner.details(id), true);
     handler("reskin:create", async (input) => {
       const status=await codexRunner.status(true);
@@ -191,6 +215,17 @@ app
       return reskins.update(id, status);
     }, true);
     handler("reskin:copy", (id) => clipboard.writeText(reskins.handoff(id)));
+    handler('generation:list',()=>generation.list());
+    handler('generation:capabilities',()=>({actionTable:true,rigVersion:2}));
+    handler('generation:details',id=>generationRunner.details(id),true);
+    handler('generation:create',async input=>{
+      const status=await generationRunner.status(true);
+      if(!status.ready)throw new Error(status.message);
+      const result=await enqueue(()=>generation.create(input));
+      await generationRunner.start(result.job.id);return result;
+    });
+    handler('generation:start',id=>generationRunner.start(id));
+    handler('generation:cancel',id=>generationRunner.cancel(id));
     handler(
       "library:import-dialog",
       async (kind, collectionId) => {
@@ -320,6 +355,7 @@ app.on("before-quit", (event) => {
   event.preventDefault(); finishing = true;
   (async () => {
     await codexRunner?.shutdown();
+    await generationRunner?.shutdown();
     await queue;
     await reskinBridge?.close();
     app.quit();

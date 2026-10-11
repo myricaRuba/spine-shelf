@@ -61,8 +61,10 @@ test('bad or unchanged results never modify the original resource',async t=>{
 test('stale tasks, tampered snapshots, path traversal and cancelled jobs are rejected',async t=>{
   const x=await setup(t);const {job}=await x.create();const c=await x.service.context(job.id);
   await assert.rejects(x.service.image(job.id,'source','../../jobs.json'),/目录内/);
-  await fs.symlink(path.join(x.source,'rig.png'),path.join(c.resultDir,'escape.png'));
-  await assert.rejects(x.service.image(job.id,'result','escape.png'),/目录内/);
+  // Directory junctions test realpath containment on Windows without requiring
+  // developer mode/admin privileges for file symlinks.
+  await fs.symlink(x.source,path.join(c.resultDir,'escape'),process.platform==='win32'?'junction':'dir');
+  await assert.rejects(x.service.image(job.id,'result','escape/rig.png'),/目录内/);
   await fs.writeFile(c.pages[0].result,pixels(180));
   await fs.appendFile(c.atlasPath,'\n');
   await assert.rejects(x.service.apply(job.id),/快照已被修改/);
@@ -79,7 +81,9 @@ test('MCP stdio exposes tools and serializes a complete job through the authenti
   assert.equal((await fetch(descriptor.url,{method:'POST',body:'{}'})).status,403);
   const transport=new StdioClientTransport({command:process.execPath,args:[path.resolve('electron/mcp-server.cjs'),'--data-dir',x.root],stderr:'pipe'});
   const client=new Client({name:'spine-test',version:'1.0.0'});await client.connect(transport);t.after(()=>client.close());
-  assert.equal((await client.listTools()).tools.length,7);
+  const names=(await client.listTools()).tools.map(tool=>tool.name);
+  assert.equal(names.filter(name=>name.startsWith('spine_reskin_')).length,7);
+  assert.equal(names.filter(name=>name.startsWith('spine_generate_')).length,7);
   const status=await client.callTool({name:'spine_reskin_status',arguments:{}});assert.equal(status.structuredContent.assets,1);
   const created=await client.callTool({name:'spine_reskin_create_task',arguments:{assetId:x.asset.id,name:'MCP 皮肤',prompt:'测试',baseSkin:'default'}});
   const taskId=created.structuredContent.job.id;
@@ -89,4 +93,132 @@ test('MCP stdio exposes tools and serializes a complete job through the authenti
   const applied=await client.callTool({name:'spine_reskin_apply',arguments:{taskId}});
   assert.equal(applied.isError,undefined);assert.equal(applied.structuredContent.job.status,'completed');
   assert.deepEqual(x.asset.skins,['default','MCP 皮肤']);assert.equal(x.lib.data.assets.length,1);
+});
+
+async function addSkin(x, name='机甲', baseSkin='default', value=180) {
+  const {job} = await x.service.create({assetId:x.asset.id,name,baseSkin,prompt:'紫发与金属护甲'});
+  const c = await x.service.context(job.id);
+  await fs.writeFile(c.pages[0].result,pixels(value));
+  await x.service.apply(job.id);
+  return structuredClone(x.asset.reskins.find(s=>s.name===name));
+}
+const redesign = (x, layer, baseSkin='default') => x.service.create({assetId:x.asset.id,name:layer.name,
+  replaceSkin:layer.name,expectedTaskId:layer.taskId,baseSkin,prompt:'修正眼睛和衣服'});
+async function archives(x) {
+  const root=path.join(x.lib.root,'.trash/skins');
+  return Promise.all((await fs.readdir(root)).map(async id=>({dir:path.join(root,id),...JSON.parse(await fs.readFile(path.join(root,id,'change.json'),'utf8'))})));
+}
+
+test('redesign retains the old skin until success, replaces in place and preserves chained skins and project references',async t=>{
+  const x=await setup(t), base=path.join(x.lib.root,'assets',x.asset.id);
+  const original=await fs.readFile(path.join(base,'skeleton.json'));
+  const initialSize=x.asset.size;
+  const old=await addSkin(x);
+  const child=await addSkin(x,'冰甲','机甲',210);
+  x.lib.data.projects.push({id:'p',name:'项目',categories:[],members:[{assetId:x.asset.id,skin:'机甲'}]});await x.lib.save();
+  const before=structuredClone(x.asset), oldPixels=await fs.readFile(path.join(base,path.dirname(old.atlas),'page-0.png'));
+  const {job}=await redesign(x,old,'机甲');
+  assert.deepEqual(x.asset,before);assert.equal(job.targetBaseSkin,'default');
+  const c=await x.service.context(job.id);assert.deepEqual(await fs.readFile(c.pages[0].source),oldPixels);
+  assert.match(x.service.handoff(job.id),/重新设计皮肤/);assert.match(c.instructions,/替换同名/);
+  await assert.rejects(x.service.apply(job.id),/没有检测到/);
+  assert.deepEqual(x.asset,before);
+  await fs.writeFile(c.pages[0].result,pixels(240));
+  await x.service.apply(job.id);
+  assert.deepEqual(x.asset.skins,['default','机甲','冰甲']);
+  assert.equal(x.asset.reskins[0].taskId,job.id);assert.equal(x.asset.reskins[0].baseSkin,'default');
+  assert.deepEqual(x.asset.reskins[1],child);assert.equal(x.lib.data.projects[0].members[0].skin,'机甲');
+  assert.deepEqual(await fs.readFile(path.join(base,'skeleton.json')),original);
+  assert.equal(x.asset.contentRevision,before.contentRevision+1);
+  const archive=(await archives(x))[0];assert.equal(archive.state,'archived');
+  assert.deepEqual(await fs.readFile(path.join(archive.dir,'files/page-0.png')),oldPixels);
+  await assert.rejects(fs.access(path.join(base,old.atlas)),{code:'ENOENT'});
+  let extra=0;
+  for (const layer of x.asset.reskins) for(const file of ['texture.atlas','page-0.png'])extra+=(await fs.stat(path.join(base,path.dirname(layer.atlas),file))).size;
+  assert.equal(x.asset.size,initialSize+extra);
+  await x.service.apply(job.id);assert.equal(x.asset.contentRevision,before.contentRevision+1);
+  const reloaded=new Library(x.lib.root);await reloaded.init();const service=new ReskinService(reloaded);await service.init();
+  assert.deepEqual(reloaded.asset(x.asset.id),x.asset);assert.equal(service.task(job.id).status,'completed');
+});
+
+test('delete archives only the selected skin and repairs descendant and project references',async t=>{
+  const x=await setup(t), base=path.join(x.lib.root,'assets',x.asset.id);
+  const old=await addSkin(x);const child=await addSkin(x,'冰甲','机甲',210);
+  const childPixels=await fs.readFile(path.join(base,path.dirname(child.atlas),'page-0.png'));
+  const native=await fs.readFile(path.join(base,'textures/0.png'));
+  x.lib.data.projects.push({id:'p',name:'项目',categories:[],members:[{assetId:x.asset.id,skin:'机甲'},{assetId:'other',skin:'机甲'}]});await x.lib.save();
+  const result=await x.service.remove(x.asset.id,old.name,old.taskId);
+  assert.equal(result.fallbackSkin,'default');assert.deepEqual(x.asset.skins,['default','冰甲']);
+  assert.equal(x.asset.reskins[0].baseSkin,'default');
+  assert.deepEqual(await fs.readFile(path.join(base,path.dirname(child.atlas),'page-0.png')),childPixels);
+  assert.deepEqual(await fs.readFile(path.join(base,'textures/0.png')),native);
+  assert.deepEqual(x.lib.data.projects[0].members.map(m=>m.skin),['default','机甲']);
+  assert.deepEqual(JSON.parse(await fs.readFile(path.join(base,'reskins.json'),'utf8')).skins,x.asset.reskins);
+  assert.equal((await archives(x))[0].state,'archived');
+  await x.service.apply(old.taskId);assert.deepEqual(x.asset.skins,['default','冰甲']); // History cannot resurrect deleted skins.
+  await assert.rejects(x.service.remove(x.asset.id,'default',''),/原始皮肤/);
+  await assert.rejects(x.service.remove(x.asset.id,child.name,'stale'),/已更新/);
+  const {job}=await redesign(x,child);await assert.rejects(x.service.remove(x.asset.id,child.name,child.taskId),/进行中/);
+  await x.service.update(job.id,'cancelled');await x.service.remove(x.asset.id,child.name,child.taskId);
+  assert.deepEqual(x.asset.skins,['default']);
+});
+
+test('failed or cancelled redesign preserves existing textures; stale/native targets are rejected',async t=>{
+  const x=await setup(t), old=await addSkin(x), before=structuredClone(x.asset);
+  await assert.rejects(redesign(x,{name:'default',taskId:''}),/只能重新设计/);
+  await assert.rejects(redesign(x,{...old,taskId:'stale'}),/已更新/);
+  const {job}=await redesign(x,old);await x.service.update(job.id,'failed','生图失败');
+  assert.deepEqual(x.asset,before);
+  await x.service.update(job.id,'queued');await x.service.update(job.id,'cancelled');
+  await assert.rejects(x.service.apply(job.id),/重试/);assert.deepEqual(x.asset,before);
+  const next=await redesign(x,old);await x.service.update(next.job.id,'failed');
+  await x.service.remove(x.asset.id,old.name,old.taskId);
+  await x.service.update(next.job.id,'queued');await assert.rejects(x.service.apply(next.job.id),/删除或更新/);
+  assert.deepEqual(x.asset.skins,['default']);
+});
+
+test('disk write failures roll back deletion and replacement including manifest and projects',async t=>{
+  const x=await setup(t), old=await addSkin(x), base=path.join(x.lib.root,'assets',x.asset.id);
+  x.lib.data.projects.push({id:'p',name:'项目',categories:[],members:[{assetId:x.asset.id,skin:old.name}]});await x.lib.save();
+  const before=structuredClone(x.lib.data), save=x.lib.save.bind(x.lib);
+  x.lib.save=async()=>{throw new Error('disk full');};
+  await assert.rejects(x.service.remove(x.asset.id,old.name,old.taskId),/disk full/);
+  assert.deepEqual(x.lib.data,before);await fs.access(path.join(base,old.atlas));
+  assert.deepEqual(JSON.parse(await fs.readFile(path.join(base,'reskins.json'),'utf8')).skins,x.asset.reskins);
+  const {job}=await redesign(x,old), c=await x.service.context(job.id);await fs.writeFile(c.pages[0].result,pixels(240));
+  await assert.rejects(x.service.apply(job.id),/disk full/);
+  assert.deepEqual(x.lib.data,before);assert.equal(job.status,'failed');await fs.access(path.join(base,old.atlas));
+  assert.deepEqual(JSON.parse(await fs.readFile(path.join(base,'reskins.json'),'utf8')).skins,x.asset.reskins);
+  x.lib.save=save;
+  await x.service.update(job.id,'queued');await x.service.apply(job.id);assert.equal(job.status,'completed');
+});
+
+test('startup recovers committed archiving and rolls back an interrupted manifest',async t=>{
+  const {beginSkinChange}=require('../electron/skin-storage.cjs');
+  const x=await setup(t), old=await addSkin(x), base=path.join(x.lib.root,'assets',x.asset.id);
+  const rollback=await beginSkinChange(x.lib,x.asset,old,'delete');
+  await fs.writeFile(path.join(base,'reskins.json'),JSON.stringify({version:1,skins:[]}));
+  await new ReskinService(x.lib).init();
+  assert.deepEqual(JSON.parse(await fs.readFile(path.join(base,'reskins.json'),'utf8')).skins,x.asset.reskins);
+  assert.equal(JSON.parse(await fs.readFile(path.join(rollback.directory,'change.json'),'utf8')).state,'aborted');
+  const committed=await beginSkinChange(x.lib,x.asset,old,'delete');
+  x.asset.reskins=[];x.asset.skins=['default'];await x.lib.save();
+  const reloaded=new Library(x.lib.root);await reloaded.init();await new ReskinService(reloaded).init();
+  await fs.access(path.join(committed.directory,'files/page-0.png'));
+  assert.deepEqual(JSON.parse(await fs.readFile(path.join(base,'reskins.json'),'utf8')).skins,[]);
+  await new ReskinService(reloaded).init(); // Recovery is repeatable.
+});
+
+test('skin deletion refuses native paths or junctions and never moves external files',async t=>{
+  const x=await setup(t), old=await addSkin(x), base=path.join(x.lib.root,'assets',x.asset.id);
+  const layer=x.asset.reskins[0];layer.atlas='texture.atlas';
+  await assert.rejects(x.service.remove(x.asset.id,layer.name,layer.taskId),/目录无效/);
+  const directory=path.join(base,path.dirname(old.atlas)), safeCopy=directory+'-saved';
+  await fs.rename(directory,safeCopy);
+  await fs.symlink(x.source,directory,process.platform==='win32'?'junction':'dir');
+  layer.atlas=old.atlas;
+  try {
+    await assert.rejects(x.service.remove(x.asset.id,layer.name,layer.taskId),/外部位置/);
+    assert.deepEqual(x.asset.skins,['default','机甲']);await fs.access(path.join(x.source,'rig.png'));
+  } finally {await fs.unlink(directory);await fs.rename(safeCopy,directory);}
 });

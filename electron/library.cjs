@@ -311,6 +311,11 @@ class Library {
             binaryHints: json ? [] : binaryNames(raw),
           }),
         );
+        if (options.generationTaskId) {
+          asset.generationTaskId = options.generationTaskId;
+          asset.name = options.name;
+          asset.tags = ['AI 制作'];
+        }
         this.data.assets.push(asset);
         report.added.push(id);
       } catch (error) {

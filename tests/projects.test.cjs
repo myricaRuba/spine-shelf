@@ -59,14 +59,18 @@ test('ZIP exports selected AI appearance, portable atlas paths, manifests and ve
   await x.service.mutate('add',{projectId:projectId,assetIds:[x.asset.id]});
   await x.service.mutate('member',{projectId,assetId:x.asset.id,categoryId:'character',skin:'青色机甲',label:'../英雄',note:'主角'});
   const skeletonBefore=await fs.readFile(path.join(x.library.root,'assets',x.asset.id,'skeleton.json'));
-  const ticks=[];const target=path.join(x.root,'项目.zip');const result=await x.service.export(projectId,target,p=>ticks.push(p));
+  const ticks=[];const target=path.join(x.root,'项目.zip');const result=await x.service.export(projectId,target,p=>ticks.push(p),{skinMode:'current'});
   assert.equal(result.assets,1);assert.equal(result.bakedSkins,1);assert.equal(ticks.at(-1).phase,'packing');
   const files=await unzip(target);const projectFile=[...files.keys()].find(k=>k.endsWith('/project.json'));
   const prefix=projectFile.slice(0,-'project.json'.length),manifest=JSON.parse(files.get(projectFile));const entry=manifest.assets[0];
   assert.equal(entry.skin,'青色机甲');assert.equal(entry.runtimeSkin,x.asset.skins[0]);assert.equal(entry.bakedSkin,true);
   assert.deepEqual(files.get(prefix+entry.skeleton),skeletonBefore);
   assert.deepEqual(files.get(prefix+entry.textures[0]),await fs.readFile(context.pages[0].result));
-  assert.match(files.get(prefix+entry.atlas).toString(),/^textures\/page-0.png/);
+  assert.equal(entry.atlas,entry.skeleton.replace(/\.(json|skel)$/,'')+'.atlas');
+  assert.match(files.get(prefix+entry.atlas).toString(),/^page-0.png/);
+  assert.equal(path.posix.dirname(entry.textures[0]),path.posix.dirname(entry.atlas));
+  const info=JSON.parse(files.get(prefix+path.posix.dirname(entry.skeleton)+'/asset.json'));
+  assert.equal(info.atlas,'skeleton.atlas');assert.deepEqual(info.textures,['page-0.png']);
   assert.ok([...files.keys()].every(k=>!k.split('/').includes('..') && !k.includes('\\') && !k.startsWith('/')));
   assert.doesNotMatch(files.get(projectFile).toString(),/sourceDigest|sourceDir|ReskinJobs|\/Users\/|[A-Z]:\\/);
   for(const line of files.get(prefix+'SHA256SUMS.txt').toString().trim().split('\n')) {
@@ -74,7 +78,7 @@ test('ZIP exports selected AI appearance, portable atlas paths, manifests and ve
   }
   assert.deepEqual(await fs.readFile(path.join(x.library.root,'assets',x.asset.id,'skeleton.json')),skeletonBefore);
   await x.service.mutate('member',{projectId,assetId:x.asset.id,categoryId:'terrain',skin:x.asset.skins[0]});
-  await x.service.export(projectId,target);const native=await unzip(target);
+  await x.service.export(projectId,target,()=>{},{skinMode:'current'});const native=await unzip(target);
   const nativeManifest=JSON.parse(native.get(projectFile));assert.equal(nativeManifest.assets[0].bakedSkin,false);
   assert.deepEqual(native.get(prefix+nativeManifest.assets[0].textures[0]),await fs.readFile(path.join(x.library.root,'assets',x.asset.id,'textures/0.png')));
 });
@@ -108,4 +112,43 @@ test('sanitized folder collisions preserve every asset and CSV treats names as t
   for(const [index,source] of [original,copy].entries())assert.deepEqual(files.get(prefix+manifest.assets[index].skeleton),await fs.readFile(path.join(source,'skeleton.json')));
   assert.match(files.get(prefix+'资源清单.csv').toString(),/"'=2\+2"/);
   assert.equal(manifest.assets[0].category,'=2+2');
+});
+
+test('selective export skips incompatible or broken unselected assets and scopes ZIP, manifest and progress',async t=>{
+  const x=await setup(t);await x.library.importPaths([path.resolve('resources/examples/alien')]);
+  const other=x.library.data.assets.find(a=>a.id!==x.asset.id),id=(await x.service.mutate('create',{name:'按需导出'})).projectId;
+  await x.service.mutate('add',{projectId:id,assetIds:[x.asset.id]});
+  await x.service.mutate('add',{projectId:id,assetIds:[other.id],categoryId:'terrain'});
+  const otherFile=path.join(x.library.root,'assets',other.id,'skeleton.json');
+  const json=JSON.parse(await fs.readFile(otherFile,'utf8'));json.skeleton.spine='4.3.13';await fs.writeFile(otherFile,JSON.stringify(json));
+  assert.equal((await x.service.exportPlan(id,{targetVersion:'4.2'})).canExport,false);
+  const options={targetVersion:'4.2',assetIds:[x.asset.id,x.asset.id]},plan=await x.service.exportPlan(id,options);
+  assert.equal(plan.canExport,true);assert.deepEqual(plan.assets.map(a=>a.id),[x.asset.id]);
+  // A file error in an excluded member must not block the chosen export either.
+  await fs.writeFile(otherFile,'broken unselected skeleton');
+  const before=x.library.snapshot(),dest=path.join(x.root,'selected.zip'),ticks=[];
+  const result=await x.service.export(id,dest,p=>ticks.push(p),options);
+  assert.equal(result.assets,1);assert.ok(ticks.every(p=>p.total===1));assert.equal(ticks.at(-1).completed,1);
+  const files=await unzip(dest),prefix='按需导出/',manifest=JSON.parse(files.get(prefix+'project.json'));
+  assert.deepEqual(manifest.assets.map(a=>a.id),[x.asset.id]);
+  assert.equal(manifest.categories.find(c=>c.id==='character').count,1);assert.equal(manifest.categories.find(c=>c.id==='terrain').count,0);
+  assert.equal([...files.keys()].filter(n=>n.endsWith('/asset.json')).length,1);
+  assert.ok([...files.keys()].every(n=>!n.includes(other.id.slice(0,8))));
+  assert.ok(!files.get(prefix+'资源清单.csv').toString().includes(other.name));
+  assert.deepEqual(x.library.snapshot(),before);
+});
+
+test('empty, malformed and nonmember selections never fall back to exporting all assets',async t=>{
+  const x=await setup(t),id=(await x.service.mutate('create',{name:'选择校验'})).projectId;
+  await x.service.mutate('add',{projectId:id,assetIds:[x.asset.id]});
+  await x.library.importPaths([path.resolve('resources/examples/alien')]);const nonmember=x.library.data.assets.find(a=>a.id!==x.asset.id);
+  const dest=path.join(x.root,'keep.zip');await fs.writeFile(dest,'keep');
+  const empty=await x.service.exportPlan(id,{assetIds:[]});assert.equal(empty.canExport,false);assert.deepEqual(empty.assets,[]);
+  await assert.rejects(x.service.export(id,dest,()=>{},{assetIds:[]}),/至少选择/);
+  for(const ids of [null,'all',[null],[''],['missing'],[x.asset.id,nonmember.id]]) {
+    await assert.rejects(x.service.exportPlan(id,{assetIds:ids}),/选择|所选/);
+    await assert.rejects(x.service.export(id,dest,()=>{},{assetIds:ids}),/选择|所选/);
+  }
+  assert.equal(await fs.readFile(dest,'utf8'),'keep');
+  assert.equal(x.service.project(id).members.length,1);
 });

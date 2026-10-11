@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { Check, Circle, Clock3, LoaderCircle, TriangleAlert } from "lucide-react";
 import type { ReskinDetails, ReskinJob } from "./types";
 
@@ -22,7 +22,7 @@ export default function ReskinProgress({ job }: {job: ReskinJob}) {
       if (reading) {again = true; return;}
       reading = true;
       try {
-        const next = await window.shelf.reskinDetails(job.id);
+        const next = await (job.kind==='generation' ? window.shelf.generationDetails(job.id) : window.shelf.reskinDetails(job.id));
         if (current) {setDetails(next);setError("");}
       } catch(e) {if (current) setError(String(e));}
       finally {
@@ -34,7 +34,7 @@ export default function ReskinProgress({ job }: {job: ReskinJob}) {
     const off = window.shelf.onReskinChange(() => void refresh());
     const timer = setInterval(() => {setNow(Date.now());if (active) void refresh();},2000);
     return () => {current = false;off();clearInterval(timer);};
-  },[job.id,active]);
+  },[job.id,job.kind,active]);
   useEffect(() => {
     if (follow.current && feed.current) feed.current.scrollTop = feed.current.scrollHeight;
   },[details,all]);
@@ -55,7 +55,8 @@ export default function ReskinProgress({ job }: {job: ReskinJob}) {
       if (event.currentTarget.open && follow.current && feed.current) feed.current.scrollTop = feed.current.scrollHeight;
     }}>
       <summary>制作详情 <span>{entries.length ? `${entries.length} 条记录` : ""}</span></summary>
-      <dl className="reskin-request"><dt>基础皮肤</dt><dd>{job.baseSkin}</dd><dt>换肤要求</dt><dd>{job.prompt}</dd><dt>本次开始</dt><dd>{job.execution?.startedAt ? new Date(job.execution.startedAt).toLocaleString("zh-CN",{hour12:false}) : "等待开始"}</dd></dl>
+      <dl className="reskin-request"><dt>{job.kind==='generation'?'制作动作':'基础皮肤'}</dt><dd>{job.kind==='generation'?job.animations?.join('、'):job.baseSkin}</dd><dt>{job.kind==='generation'?'制作需求':'换肤要求'}</dt><dd>{job.prompt}</dd><dt>本次开始</dt><dd>{job.execution?.startedAt ? new Date(job.execution.startedAt).toLocaleString("zh-CN",{hour12:false}) : "等待开始"}</dd></dl>
+      {job.kind==='generation'&&job.animationRequirements?.length&&<dl className="generation-action-summary" aria-label="已提交的动作内容">{job.animationRequirements.map(action=><Fragment key={action.name}><dt>{action.name}</dt><dd>{action.description}</dd></Fragment>)}</dl>}
       <div className="reskin-log-tabs" role="group" aria-label="制作记录筛选">
         <button aria-pressed={!all} onClick={()=>setAll(false)}>主要进度</button>
         <button aria-pressed={all} onClick={()=>setAll(true)}>全部操作</button>

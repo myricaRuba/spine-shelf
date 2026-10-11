@@ -11,6 +11,7 @@ import {
   Minimize2,
   MoreHorizontal,
   Pause,
+  Palette,
   Play,
   Repeat2,
   RotateCcw,
@@ -23,6 +24,7 @@ import {
 } from "lucide-react";
 import { SpineEngine } from "./engine";
 import ReskinPanel from "./ReskinPanel";
+import SkinDialog, { type SkinAction } from "./SkinDialog";
 import {
   type Asset,
   type Library,
@@ -60,6 +62,10 @@ export default function Viewer({
     [error, setError] = useState("");
   const [animation, setAnimation] = useState(""),
     [skin, setSkin] = useState("");
+  const [skinAction, setSkinAction] = useState<SkinAction | null>(null);
+  const selectedSkin = useRef("");
+  const pendingSkin = useRef<string | null>(null);
+  selectedSkin.current = skin;
   const [playing, setPlaying] = useState(true),
     [loop, setLoop] = useState(true),
     [speed, setSpeed] = useState(1);
@@ -100,6 +106,9 @@ export default function Viewer({
       .load()
       .then(async () => {
         if (cancelled) return;
+        const desiredSkin = pendingSkin.current || selectedSkin.current;
+        if (desiredSkin && instance.data.findSkin(desiredSkin)) instance.setSkin(desiredSkin);
+        pendingSkin.current = null;
         setAnimation(instance.animation);
         setSkin(instance.skin);
         setDuration(instance.duration);
@@ -146,8 +155,9 @@ export default function Viewer({
   }, [asset.id, asset.pma, asset.contentRevision, retry]);
   useEffect(()=>{
     const instance=engine.current;
-    if(!loading && preferredSkin && instance?.data?.findSkin(preferredSkin)) {instance.setSkin(preferredSkin);setSkin(preferredSkin);}
-  },[preferredSkin,loading]);
+    if (preferredSkin && instance?.skeleton && instance.data.findSkin(preferredSkin)) {instance.setSkin(preferredSkin);setSkin(preferredSkin);}
+    else if (preferredSkin) pendingSkin.current = preferredSkin;
+  },[preferredSkin]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -588,6 +598,12 @@ export default function Viewer({
             </div>
           </label>
         </div>
+        <div className="preview-skin-actions" aria-label="当前皮肤操作">
+          {asset.reskins?.some(s => s.name === skin) ? <>
+            <button className="text-button" disabled={loading} onClick={() => setSkinAction({mode:"redesign",name:skin})}><Palette size={13} />重新设计皮肤</button>
+            <button className="text-button danger" disabled={loading} onClick={() => setSkinAction({mode:"delete",name:skin})}><Trash2 size={13} />删除皮肤</button>
+          </> : <span className="reskin-help">原始皮肤</span>}
+        </div>
         <div className="viewer-hint">
           滚轮缩放<span>·</span>拖动画布平移<span>·</span>
           <kbd>空格</kbd> 播放 / 暂停
@@ -603,7 +619,7 @@ export default function Viewer({
             })}
             {!library.projects.some(p=>p.members.some(m=>m.assetId===asset.id)) && <p>尚未加入游戏项目</p>}
           </section>
-          <ReskinPanel key={asset.id} asset={asset} skin={skin} notify={notify} showSkin={(name) => {
+          <ReskinPanel key={asset.id} asset={asset} skin={skin} notify={notify} manageSkin={(name,mode) => setSkinAction({name,mode})} showSkin={(name) => {
             const instance = engine.current;
             if (!instance?.skeleton || !instance.data.findSkin(name)) { notify("皮肤正在加载，请稍后再试"); return; }
             instance.setSkin(name); setSkin(name); setTab("preview");
@@ -752,6 +768,14 @@ export default function Viewer({
         </span>
         <span>{formatSize(asset.size)}</span>
       </div>
+      {skinAction && <SkinDialog key={`${asset.id}:${skinAction.name}:${skinAction.mode}`} asset={asset} library={library} action={skinAction}
+        close={() => setSkinAction(null)} notify={notify} started={() => setTab("info")}
+        removed={fallback => {
+          pendingSkin.current = fallback;
+          const instance = engine.current;
+          if (instance?.skeleton && instance.data.findSkin(fallback)) instance.setSkin(fallback);
+          setSkin(fallback); setTab("preview");
+        }} />}
       {expanded && (
         <button
           className="close-expanded icon-btn"

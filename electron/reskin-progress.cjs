@@ -8,6 +8,11 @@ function visibleText(value, limit = 3000) {
     .slice(0, limit);
 }
 const toolLabels = {
+  spine_generate_get_task: '读取 Spine 制作需求',
+  spine_generate_read_image: '检查角色部件',
+  spine_generate_update_task: '更新制作进度',
+  spine_generate_preview: '编译动作预览，检查骨骼和网格',
+  spine_generate_apply: '校验骨骼动画并导入资源库',
   spine_reskin_get_task: '读取角色与换肤要求',
   spine_reskin_read_image: '查看角色贴图',
   spine_reskin_update_task: '更新制作进度',

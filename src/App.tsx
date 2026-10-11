@@ -35,6 +35,7 @@ import {
 import Viewer from "./Viewer";
 import PreviewPane from "./PreviewPane";
 import Tooltips from "./Tooltips";
+import GenerationDialog from './GenerationDialog';
 import ProjectDialogs, {type ProjectDialogState} from "./ProjectDialogs";
 import { SpineEngine } from "./engine";
 import {
@@ -45,7 +46,7 @@ import {
   formatSize,
   CATEGORY_LABELS,
   type Category,
-  type ProjectAction, type ProjectInput, type ProjectExportProgress,
+  type ProjectAction, type ProjectInput, type ProjectExportProgress, type ProjectExportOptions,
 } from "./types";
 
 type Modal =
@@ -89,6 +90,7 @@ export default function App() {
   const [collectionName, setCollectionName] = useState(""),
     [removeTarget, setRemoveTarget] = useState<Asset | null>(null);
   const [bootError, setBootError] = useState("");
+  const [generationOpen,setGenerating]=useState(false);
   const [classifying, setClassifying] = useState(false);
   const [projectDialog,setProjectDialog]=useState<ProjectDialogState|null>(null);
   const [projectCategory,setProjectCategory]=useState('all');
@@ -145,6 +147,7 @@ export default function App() {
       }
       if (event.key === "Escape" && !importing) {
         setModal(null);
+        setGenerating(false);
         setDragging(false);
       }
     };
@@ -337,9 +340,9 @@ export default function App() {
   const mutateProject=async(action:ProjectAction,input:ProjectInput)=>{
     const result=await window.shelf.projectMutate(action,input);applyLibrary(result.library);return result.projectId;
   };
-  const exportProject=async(id:string)=>{
+  const exportProject=async(id:string,options:ProjectExportOptions)=>{
     setExporting(true);setExportProgress(null);
-    try {const result=await window.shelf.projectExport(id);if(result)notify(`已导出 ${result.assets} 份素材，${formatSize(result.bytes)}`);}
+    try {const result=await window.shelf.projectExport(id,options);if(result)notify(`已导出 ${result.assets} 份素材${result.converted?`，已转换 ${result.converted} 份`:''}，${formatSize(result.bytes)}`);return !!result;}
     finally {setExporting(false);setExportProgress(null);}
   };
   const removeProjectMembers=async(ids:string[])=>{
@@ -612,16 +615,17 @@ export default function App() {
               </p>
             </div>
             {activeProject ? <div className="project-heading-actions">
+              <button className="button" onClick={()=>setGenerating(true)}><Sparkles size={16}/>制作 Spine</button>
               <button className="button" onClick={()=>setProjectDialog({mode:'picker',projectId:activeProject.id})}><Plus size={16}/>添加素材</button>
               <button className="button primary" disabled={exporting || !activeProject.members.length} onClick={()=>setProjectDialog({mode:'export',projectId:activeProject.id})}><Download size={16}/>导出项目</button>
-            </div> : <button
+            </div> : <div className="project-heading-actions"><button className="button" onClick={()=>setGenerating(true)}><Sparkles size={16}/>制作 Spine</button><button
               className="button primary"
               onClick={openImport}
               disabled={importing}
             >
               <Plus size={17} />
               导入资源
-            </button>}
+            </button></div>}
           </div>
           {activeProject && <div className="project-overview">
             <div className="project-category-tabs" role="group" aria-label="项目分类筛选">
@@ -934,6 +938,7 @@ export default function App() {
         </PreviewPane>
       </div>
       <Tooltips />
+      {generationOpen&&<GenerationDialog close={()=>setGenerating(false)} view={id=>{setGenerating(false);setSection('all');setSearch('');setFormat('all');setSelectedId(id);}}/>}
       {projectDialog && <ProjectDialogs key={`${projectDialog.mode}:${projectDialog.projectId}:${projectDialog.assetIds?.join(',')}`} state={projectDialog} library={library} close={()=>setProjectDialog(null)} mutate={mutateProject} onCreated={id=>changeSection(id?`project:${id}`:'all')} onExport={exportProject} exportProgress={exportProgress}/>}
       {dragging && (
         <div className="drop-overlay">
