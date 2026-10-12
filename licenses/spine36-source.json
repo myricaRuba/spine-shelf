@@ -1,0 +1,22 @@
+{
+  "commit": "654c20e5b0e523040b6366bbd1042510d2645134",
+  "source": "https://raw.githubusercontent.com/EsotericSoftware/spine-runtimes/654c20e5b0e523040b6366bbd1042510d2645134/spine-ts/build/spine-webgl.js",
+  "originalSha256": "2883daee81ae60b25f6205b83feb82b76812bf63cfdf0886f04f390b12891794",
+  "binaryFormatReference": "https://raw.githubusercontent.com/EsotericSoftware/spine-runtimes/654c20e5b0e523040b6366bbd1042510d2645134/spine-libgdx/spine-libgdx/src/com/esotericsoftware/spine/SkeletonBinary.java",
+  "license": "https://raw.githubusercontent.com/EsotericSoftware/spine-runtimes/654c20e5b0e523040b6366bbd1042510d2645134/LICENSE",
+  "modification": "Upstream license prepended; runtime isolated in a closure as globalThis.spine36. Binary decoding is implemented separately in electron/spine36-binary.cjs.",
+  "fixtures": [
+    {
+      "file": "spineboy-pro.json",
+      "source": "https://raw.githubusercontent.com/EsotericSoftware/spine-runtimes/654c20e5b0e523040b6366bbd1042510d2645134/examples/spineboy/export/spineboy-pro.json"
+    },
+    {
+      "file": "spineboy-pro.skel",
+      "source": "https://raw.githubusercontent.com/EsotericSoftware/spine-runtimes/654c20e5b0e523040b6366bbd1042510d2645134/examples/spineboy/export/spineboy-pro.skel"
+    },
+    {
+      "file": "spineboy.atlas",
+      "source": "https://raw.githubusercontent.com/EsotericSoftware/spine-runtimes/654c20e5b0e523040b6366bbd1042510d2645134/examples/spineboy/export/spineboy.atlas"
+    }
+  ]
+}

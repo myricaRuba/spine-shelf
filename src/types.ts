@@ -72,7 +72,7 @@ export interface GameProject {
 }
 export type ProjectAction = "create"|"rename"|"remove"|"category"|"removeCategory"|"add"|"member"|"removeMembers";
 export interface ProjectInput {projectId?:string;name?:string;note?:string;categoryId?:string;assetId?:string;assetIds?:string[];skin?:string;label?:string;}
-export type SpineExportTarget = 'original'|'3.8'|'4.0'|'4.1'|'4.2'|'4.3';
+export type SpineExportTarget = 'original'|'3.6'|'3.8'|'4.0'|'4.1'|'4.2'|'4.3';
 export interface ProjectExportOptions {targetVersion:SpineExportTarget;assetIds?:string[];skinMode?:'switchable'|'current';}
 export interface SpineConverterStatus {available:boolean;path:string;message:string;}
 export interface ProjectExportPlan {
@@ -103,7 +103,8 @@ export interface ReskinDetails {
 export interface ImportReport {
   added: string[];
   duplicates: string[];
-  errors: { file: string; message: string }[];
+  errors: { file: string; relativePath?: string; message: string }[];
+  ignoredProjects?: string[];
   library: Library;
 }
 export interface ShelfAPI {
@@ -161,6 +162,7 @@ export interface ShelfAPI {
 }
 declare global {
   interface Window {
+    spine36: any;
     shelf: ShelfAPI;
     spine?: any;
   }

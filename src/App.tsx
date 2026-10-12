@@ -1021,11 +1021,19 @@ export default function App() {
                         )}
                       </div>
                     )}
+                    {!!report.ignoredProjects?.length && (
+                      <p className="import-note">
+                        已略过 {report.ignoredProjects.length} 个配套工程文件，使用对应的 SKEL / JSON 预览。
+                      </p>
+                    )}
                     {report.errors.length > 0 && (
                       <div className="import-errors">
                         {report.errors.map((error, i) => (
                           <div key={i}>
                             <b>{error.file}</b>
+                            {error.relativePath && error.relativePath !== error.file && (
+                              <small className="import-error-path">{error.relativePath}</small>
+                            )}
                             <p>{error.message}</p>
                           </div>
                         ))}
@@ -1075,7 +1083,7 @@ export default function App() {
                         导入后会保存完整副本，移动原文件不影响预览。
                         <br />
                         <span>
-                          支持 Spine 3.8 / 4.0 / 4.1 / 4.2 / 4.3 导出素材。
+                          支持 Spine 3.6 / 3.8 / 4.0 / 4.1 / 4.2 / 4.3 导出素材。
                         </span>
                       </p>
                     </div>
@@ -1162,7 +1170,7 @@ export default function App() {
                 </div>
                 <div className="settings-row">
                   <span>本地运行库</span>
-                  <b>3.8 · 4.0 · 4.1 · 4.2 · 4.3</b>
+                  <b>3.6 · 3.8 · 4.0 · 4.1 · 4.2 · 4.3</b>
                 </div>
                 <div className="settings-row">
                   <span>应用版本</span>

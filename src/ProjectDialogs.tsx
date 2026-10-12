@@ -132,6 +132,7 @@ export default function ProjectDialogs({state,library,close,mutate,onCreated,onE
         <div className="project-export-counts">{project.categories.filter(c=>exportMembers.some(m=>m.categoryId===c.id)).map(c=><span key={c.id}>{c.name}<strong>{exportMembers.filter(m=>m.categoryId===c.id).length}</strong></span>)}</div>
         <label className="field"><span>目标 Spine 版本</span><select aria-label="目标 Spine 版本" value={exportTarget} disabled={busy} onChange={e=>{setExportPlan(null);setExportTarget(e.target.value as SpineExportTarget);}}>
           <option value="original">保留各素材原版本</option>
+          <option value="3.6">Spine 3.6</option>
           <option value="3.8">Spine 3.8 · Cocos 3.8 运行库</option>
           <option value="4.0">Spine 4.0</option><option value="4.1">Spine 4.1</option>
           <option value="4.2">Spine 4.2 · Cocos 4.2 运行库</option><option value="4.3">Spine 4.3</option>

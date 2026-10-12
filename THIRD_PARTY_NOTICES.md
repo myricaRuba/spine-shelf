@@ -14,6 +14,7 @@ Integration and modification of software containing Spine Runtimes are subject t
 
 | Component             | Source / version                                              | Included notice                                                                    |
 | --------------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Legacy WebGL runtime | `spine-runtimes` 3.6, pinned commit `654c20e5b0e523040b6366bbd1042510d2645134` | [3.6 license](licenses/spine-3.6.txt), [source hash](licenses/spine36-source.json) |
 | Legacy WebGL runtime  | `spine-runtimes` 3.8 branch, `spine-ts/build/spine-webgl.js`  | [3.8 license](licenses/spine-3.8.txt), [source hash](licenses/spine38-source.json) |
 | WebGL + core runtime  | `@esotericsoftware/spine-webgl` / `spine-core` 4.0.31         | [WebGL](licenses/spine-4.0.txt), [core](licenses/spine-core-4.0.txt)               |
 | WebGL + core runtime  | 4.1.56                                                        | [WebGL](licenses/spine-4.1.txt), [core](licenses/spine-core-4.1.txt)               |
@@ -49,3 +50,5 @@ The original Spine Shelf icon was generated with the built-in imagegen tool and 
 ## Distribution layout
 
 The desktop package includes `LICENSE`, `THIRD_PARTY_NOTICES.md`, `licenses/`, and the examples' original `LICENSE` in its resources directory. On macOS these are under `Spine Shelf.app/Contents/Resources/`. On Windows they are under `<installation directory>/resources/`. Keep these materials with redistributed builds.
+
+`public/vendor/spine36.js` preserves the upstream license and is scoped to `globalThis.spine36` to coexist with the 3.8 runtime. The binary preview decoder in `electron/spine36-binary.cjs` follows the official 3.6 `SkeletonBinary.java` format; it preserves original source files and version metadata. The paired Spineboy fixtures in `tests/fixtures/spine36` are from the same pinned upstream commit and covered by the upstream license. Source URLs and hashes are recorded in `licenses/spine36-source.json`.

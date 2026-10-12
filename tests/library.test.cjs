@@ -93,6 +93,73 @@ test("file selection imports only selected skeleton and ignores unrelated JSON",
   const config = await library.importPaths([path.join(source, "config.json")]);
   assert.equal(config.added.length, 0);
 });
+
+test("folder imports ignore companion projects only after their matching export succeeds or is deduplicated", async t => {
+  const { root, library } = await setup(t);
+  const source = path.join(root, "incoming", "hero");
+  await fs.cp(sample, source, {recursive: true});
+  const project = path.join(source, "spineboy.spine");
+  await fs.writeFile(project, "editor project");
+  let result = await library.importPaths([path.join(root, "incoming")]);
+  assert.equal(result.added.length, 1);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.ignoredProjects.length, 1);
+  result = await library.importPaths([source]);
+  assert.equal(result.duplicates.length, 1);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.ignoredProjects.length, 1);
+
+  // Explicitly selecting only the editor project must still explain that it
+  // cannot be previewed, even if another file in the folder was imported.
+  result = await library.importPaths([project]);
+  assert.equal(result.errors.length, 1);
+  assert.match(result.errors[0].message, /工程文件/);
+  assert.equal(result.ignoredProjects.length, 0);
+
+  await fs.writeFile(path.join(source, "unrelated.spine"), "other project");
+  result = await library.importPaths([source]);
+  assert.equal(result.errors.length, 1);
+  assert.equal(result.errors[0].file, "unrelated.spine");
+});
+
+test("failed exports stay actionable with relative paths and are not counted twice as companion projects", async t => {
+  const { root, library } = await setup(t);
+  const source = path.join(root, "incoming", "Gallery", "021");
+  await fs.cp(sample, source, {recursive: true});
+  await fs.writeFile(path.join(source,"spineboy.spine"), "editor project");
+  await fs.rm(path.join(source,"spineboy.png"));
+  const result = await library.importPaths([path.join(root,"incoming")]);
+  assert.equal(result.added.length, 0);
+  assert.equal(result.errors.length, 1);
+  assert.match(result.errors[0].message, /缺少贴图/);
+  assert.equal(result.errors[0].relativePath, "Gallery/021/spineboy-pro.json");
+  assert.equal(result.ignoredProjects.length, 0);
+});
+
+test("same-named projects in another folder and non-skeleton JSON cannot hide project errors", async t => {
+  const { root, library } = await setup(t);
+  const incoming=path.join(root,"incoming");
+  await fs.cp(sample,path.join(incoming,"exported"),{recursive:true});
+  await fs.mkdir(path.join(incoming,"project"));
+  await fs.writeFile(path.join(incoming,"project","spineboy.spine"),"editor project");
+  await fs.writeFile(path.join(incoming,"project","spineboy.json"),'{"config":true}');
+  const result=await library.importPaths([incoming]);
+  assert.equal(result.added.length,1);
+  assert.equal(result.errors.length,1);
+  assert.equal(result.errors[0].relativePath,"project/spineboy.spine");
+  assert.equal(result.ignoredProjects.length,0);
+});
+
+test("a single project and exported skeleton may have different names in their own folder", async t => {
+  const {root,library}=await setup(t);
+  const source=path.join(root,"character");
+  await fs.cp(sample,source,{recursive:true});
+  await fs.writeFile(path.join(source,"100600.spine"),"editor project");
+  const result=await library.importPaths([source]);
+  assert.equal(result.added.length,1);
+  assert.deepEqual(result.errors,[]);
+  assert.deepEqual(result.ignoredProjects,["100600.spine"]);
+});
 test("multiple texture pages and nested page names are parsed without confusing regions", () => {
   const text =
     "\ntex/page-1.png\nsize: 10, 10\nfilter: Linear, Linear\nhead\n  rotate: false\n  xy: 1, 1\n\ntex/page-2.png\nsize: 10, 10\nbody\n  rotate: false\n";

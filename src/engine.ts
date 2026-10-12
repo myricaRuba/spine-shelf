@@ -1,10 +1,24 @@
 import { assetUrl, type Asset } from "./types";
-import { addReskin } from "./reskin-runtime";
+import { addReskin, skinAttachments } from "./reskin-runtime";
 
 // The runtime APIs differ across Spine export versions. Keep that adaptation here.
 let legacyPromise: Promise<any> | undefined;
+let spine36Promise: Promise<any> | undefined;
 async function getRuntime(version: string): Promise<any> {
   switch (version) {
+    case "3.6":
+      spine36Promise ??= new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = new URL("vendor/spine36.js", document.baseURI).href;
+        script.onload = () => resolve({ ...window.spine36, ...window.spine36.webgl });
+        script.onerror = () => {
+          script.remove();
+          spine36Promise = undefined;
+          reject(new Error("Spine 3.6 运行库加载失败。"));
+        };
+        document.head.appendChild(script);
+      });
+      return spine36Promise;
     case "4.0":
       return import("spine40");
     case "4.1":
@@ -77,6 +91,8 @@ export class SpineEngine {
     this.manager = new rt.AssetManager(gl);
     try {
       const atlasPath = assetUrl(this.asset, "texture.atlas");
+      const legacyBinary = this.asset.runtime === "3.6" && this.asset.format === "skel";
+      const jsonPreview = legacyBinary || this.asset.format === "json";
       const [atlas, response] = await Promise.all([
         new Promise<any>((resolve, reject) =>
           this.manager.loadTextureAtlas(
@@ -85,7 +101,7 @@ export class SpineEngine {
             (_path: string, message: string) => reject(new Error(message)),
           ),
         ),
-        fetch(assetUrl(this.asset, `skeleton.${this.asset.format}`)),
+        fetch(assetUrl(this.asset, legacyBinary ? "preview.json" : `skeleton.${this.asset.format}`)),
       ]);
       if (this.disposed) {
         this.manager.dispose();
@@ -94,11 +110,11 @@ export class SpineEngine {
       if (!response.ok) throw new Error("骨骼文件读取失败。");
       const loader = new rt.AtlasAttachmentLoader(atlas);
       const reader =
-        this.asset.format === "json"
+        jsonPreview
           ? new rt.SkeletonJson(loader)
           : new rt.SkeletonBinary(loader);
       const content =
-        this.asset.format === "json"
+        jsonPreview
           ? await response.json()
           : new Uint8Array(await response.arrayBuffer());
       if (this.disposed) return;
@@ -134,6 +150,8 @@ export class SpineEngine {
       this.draw();
     } catch (error) {
       this.dispose();
+      const missing = error instanceof Error && /^Region not found in atlas: (.*?) \((?:region|mesh) attachment:/.exec(error.message);
+      if (missing) throw new Error(`图集缺少图块「${missing[1]}」。骨骼与图集不匹配或素材不完整，请补齐对应的 atlas 和贴图。`);
       throw error;
     }
   }
@@ -225,7 +243,8 @@ export class SpineEngine {
       if (!this.loop && this.duration > 0 && this.time >= this.duration)
         this.playing = false;
     }
-    this.skeleton.scaleX = this.flip ? -1 : 1;
+    if (this.asset.runtime === "3.6") this.skeleton.flipX = this.flip;
+    else this.skeleton.scaleX = this.flip ? -1 : 1;
     this.worldTransform();
     this.draw();
   }
@@ -287,8 +306,7 @@ export class SpineEngine {
         boneNames: this.data.bones.map((bone: any) => bone.name),
         slotNames: this.data.slots.map((slot: any) => slot.name),
         attachmentNames: this.data.skins.flatMap((skin: any) =>
-          skin
-            .getAttachments()
+          skinAttachments(skin)
             .map((entry: any) => entry.attachment?.path || entry.name || ""),
         ),
         animationNames: this.data.animations.map(

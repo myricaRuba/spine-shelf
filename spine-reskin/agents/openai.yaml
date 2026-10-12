@@ -1,0 +1,6 @@
+interface:
+  display_name: "Spine 3.8.75 原骨架换肤"
+  short_description: "重绘原附件纹理，保留骨骼动画，自动解包回填图集并支持可选超分"
+  default_prompt: "使用 $spine-reskin 为这个 Spine 3.8.75 角色制作新皮肤，替换原附件纹理并保留原骨骼和动画。"
+policy:
+  allow_implicit_invocation: true
