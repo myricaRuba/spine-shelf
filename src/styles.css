@@ -2033,6 +2033,19 @@ body.resizing-preview * {
   border-radius: 7px;
   background: #342c272e;
 }
+.import-note {
+  margin-top: 14px;
+  color: #8a9daf;
+  font-size: 11px;
+  line-height: 1.7;
+}
+.import-error-path {
+  display: block;
+  margin-top: 5px;
+  color: #a89887;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
 .import-errors > div {
   padding: 13px 15px;
   border-bottom: 1px solid #443c32;

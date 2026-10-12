@@ -23,6 +23,7 @@ function nativeSkin(asset,name) {
 // Slot attachment keys stay unchanged, so all existing attachment/draw-order tracks work.
 function mergeSkinJSON(source,layers,prefixes) {
   const json=structuredClone(source);
+  const legacySkins = !Array.isArray(json.skins);
   if(!Array.isArray(json.skins))json.skins=Object.entries(json.skins || {}).map(([name,attachments])=>({name,attachments}));
   const native=new Map(json.skins.map(s=>[s.name,s]));
   const lookup=(skin,slot,key)=> {
@@ -76,6 +77,7 @@ function mergeSkinJSON(source,layers,prefixes) {
     json.skins.push(skin);
   }
   if(json.skeleton)delete json.skeleton.hash;
+  if (legacySkins) json.skins = Object.fromEntries(json.skins.map(skin => [skin.name, skin.attachments]));
   return json;
 }
 

@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile, access } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import assert from "node:assert/strict";
-const versions = ["3.8", "4.0", "4.1", "4.2", "4.3"];
+const versions = ["3.6", "3.8", "4.0", "4.1", "4.2", "4.3"];
 const root = path.resolve("test-results/fixtures");
 for (const version of versions) {
   await mkdir(path.join(root, version), { recursive: true });
@@ -18,7 +18,7 @@ for (const version of versions) {
       await access(dest);
     } catch {
       const response = await fetch(
-        `https://raw.githubusercontent.com/EsotericSoftware/spine-runtimes/${version}/examples/spineboy/export/${file}`,
+        `https://raw.githubusercontent.com/EsotericSoftware/spine-runtimes/${version === "3.6" ? "654c20e5b0e523040b6366bbd1042510d2645134" : version}/examples/spineboy/export/${file}`,
       );
       if (!response.ok)
         throw new Error(`Fixture download failed: ${version}/${file}`);
@@ -44,7 +44,7 @@ try {
     [root],
   );
   assert.deepEqual(result.errors, []);
-  assert.equal(result.added.length, 9);
+  assert.equal(result.added.length, versions.length * 2 - 1);
   assert.equal(result.duplicates.length, 1);
   const testAssets = result.library.assets.filter(
     (a) => a.name === "spineboy-pro",
@@ -94,7 +94,7 @@ try {
     assert.ok(painted > 1000, `${name}: empty canvas`);
     console.log("COMPAT PASS", name, asset.version, painted + " pixels");
   }
-  console.log("PASS: all 10 runtime / format combinations rendered");
+  console.log("PASS: all 12 runtime / format combinations rendered");
 } finally {
   if (app) await app.close().catch(() => {});
   await rm(dataDir, { recursive: true, force: true });

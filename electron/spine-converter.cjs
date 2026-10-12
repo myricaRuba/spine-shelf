@@ -121,7 +121,7 @@ class SpineConverter {
       await this.run(executable,['-u',sourceEditor,'-i',source,'-o',project,'--import','skeleton'],{cwd:work});
       check(await fs.stat(project).then(s=>s.isFile() && s.size>0).catch(()=>false), `Spine ${sourceEditor} 没有生成中间工程。请先确认此版本可以正常导入素材。`);
       const settings = path.join(work,'export-settings.json');
-      await fs.writeFile(settings,JSON.stringify({class:runtime === '3.8' ? 'json' : 'export-json',extension:'.json',format:'JSON',nonessential:true,prettyPrint:true,cleanUp:false,packAtlas:null,open:false}));
+      await fs.writeFile(settings,JSON.stringify({class:runtime.startsWith('3.') ? 'json' : 'export-json',extension:'.json',format:'JSON',nonessential:true,prettyPrint:true,cleanUp:false,packAtlas:null,open:false}));
       const log = await this.run(executable,['-u',targetEditor,'-i',project,'-o',output,'--export',settings],{cwd:work});
       const bytes = await fs.readFile(await safeFile(output,'skeleton.json')).catch(()=>{throw new Error(`Spine ${targetEditor} 没有生成 skeleton.json。请确认目标编辑器已就绪。\n${log.slice(-1500)}`);});
       const json = JSON.parse(bytes.toString('utf8'));

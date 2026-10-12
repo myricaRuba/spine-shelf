@@ -63,8 +63,9 @@ try {
   if (await fs.stat(personal).catch(()=>null)) paths.push(personal);
   const imported=await page.evaluate(p=>window.shelf.importPaths(p),paths);
   assert.deepEqual(imported.errors,[]);
-  const cases=imported.library.assets.filter(a=>a.name==='spineboy-pro' || a.name.startsWith('p0016'));
-  assert.ok(cases.length>=10);
+  const onlyRuntime=process.env.SPINE_TEST_RUNTIME;
+  const cases=imported.library.assets.filter(a=>(a.name==='spineboy-pro' || a.name.startsWith('p0016')) && (!onlyRuntime || a.runtime===onlyRuntime));
+  assert.ok(cases.length >= (onlyRuntime ? 2 : 10));
   for(const a of cases) await page.evaluate(a=>window.shelf.update(a.id,{name:`reskin-${a.runtime}-${a.format}-${a.name}`}),a);
   await page.reload(); await page.waitForSelector('.asset-card');
   client=new Client({name:'spine-reskin-e2e',version:'1.0.0'});
@@ -96,8 +97,10 @@ try {
     }
     const applied=await call('apply',{taskId:job.id});
     assert.equal(applied.asset.id,a.id);
-    await page.waitForFunction(n=>document.querySelector('select[aria-label="皮肤"]')?.value===n || document.querySelector('.ready-dot')?.textContent==='加载失败',newSkin);
+    await page.waitForFunction(n=>Array.from(document.querySelectorAll('select[aria-label="皮肤"] option')).some(o=>o.value===n) || document.querySelector('.ready-dot')?.textContent==='加载失败',newSkin);
     await ready(page);
+    // The viewer preserves the current skin when the asset refreshes.
+    await skins.selectOption(newSkin);
     const after=await pixels(page); const countChanged=changed(before,after);
     silhouette(before,after,name);
     assert.ok(countChanged>100,`${name}: skin pixels did not change (${countChanged})`);

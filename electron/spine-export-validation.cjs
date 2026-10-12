@@ -5,15 +5,15 @@ const runtimes = new Map();
 
 async function runtime(version) {
   if (!runtimes.has(version)) runtimes.set(version, (async()=>{
-    const candidates = version === '3.8'
-      ? [path.join(__dirname,'../dist/vendor/spine38.js'),path.join(__dirname,'../public/vendor/spine38.js')]
+    const candidates = version === '3.8' || version === '3.6'
+      ? [path.join(__dirname,`../dist/vendor/spine${version.replace('.','')}.js`),path.join(__dirname,`../public/vendor/spine${version.replace('.','')}.js`)]
       : [path.join(path.dirname(require.resolve(`spine${version.replace('.','')}`)),'iife','spine-webgl.js')];
     let source;
     for (const file of candidates) {try {source=await fs.readFile(file,'utf8');break;} catch(error) {if(error.code!=='ENOENT')throw error;}}
     if (!source) throw new Error(`缺少 Spine ${version} 校验运行库。`);
     const context = vm.createContext({console, setTimeout, clearTimeout});
     vm.runInContext(source,context);
-    return context.spine;
+    return version === '3.6' ? context.spine36 : context.spine;
   })());
   return runtimes.get(version);
 }
@@ -23,7 +23,14 @@ async function loadSkeletonData(result,atlasText) {
   const texture = {getImage:()=>({width:2048,height:2048}),setFilters(){},setWraps(){},dispose(){}};
   const atlas = new rt.TextureAtlas(atlasText,()=>texture);
   for (const page of atlas.pages) if (page.setTexture) page.setTexture(texture);
-  const data = new rt.SkeletonJson(new rt.AtlasAttachmentLoader(atlas)).readSkeletonData(result.json);
+  let data;
+  try {
+    data = new rt.SkeletonJson(new rt.AtlasAttachmentLoader(atlas)).readSkeletonData(result.json);
+  } catch (error) {
+    const missing = /^Region not found in atlas: (.*?) \((?:region|mesh) attachment:/.exec(error.message);
+    if (missing) throw new Error(`图集缺少图块「${missing[1]}」。骨骼与图集不匹配或素材不完整，请补齐对应的 atlas 和贴图。`);
+    throw error;
+  }
   return {rt,data};
 }
 async function validateConvertedSkeleton(result, atlasText, asset, runtimeSkin, {allSkins=false}={}) {

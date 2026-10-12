@@ -11,13 +11,15 @@ const {
   binaryNames,
 } = require("./classifier.cjs");
 
-const SUPPORTED = ["3.8", "4.0", "4.1", "4.2", "4.3"];
+const { decodeSkeleton36 } = require("./spine36-binary.cjs");
+const { loadSkeletonData } = require("./spine-export-validation.cjs");
+const SUPPORTED = ["3.6", "3.8", "4.0", "4.1", "4.2", "4.3"];
 const skeletonPattern = /\.(json|skel|skel\.bytes)$/i;
 const atlasPattern = /\.atlas(\.txt)?$/i;
 const cleanStem = (name) =>
   path
     .basename(name)
-    .replace(/\.(json|skel|skel\.bytes|atlas|atlas\.txt)$/i, "")
+    .replace(/\.(json|skel|skel\.bytes|atlas|atlas\.txt|spine)$/i, "")
     .replace(/[-_](pro|ess|pma)$/i, "")
     .toLowerCase();
 
@@ -40,7 +42,7 @@ function readString(buffer, start) {
 function detectVersion(buffer, json) {
   if (json)
     return typeof json.skeleton?.spine === "string" ? json.skeleton.spine : "";
-  // 4.x stores an 8-byte hash; 3.8 stores a length-prefixed hash string.
+  // 4.x stores an 8-byte hash; 3.x stores a length-prefixed hash string.
   const modern = readString(buffer, 8);
   if (modern && /^\d+\.\d+\.\d+/.test(modern.value)) return modern.value;
   const hash = readString(buffer, 0);
@@ -166,19 +168,17 @@ class Library {
     const included = (file) =>
       selected.has(file) ||
       folders.some((folder) => file.startsWith(folder + path.sep));
-    const report = { added: [], duplicates: [], errors: [] };
+    const report = { added: [], duplicates: [], errors: [], ignoredProjects: [] };
+    const relativePath = (file) => {
+      const root = folders.filter(folder => file.startsWith(folder + path.sep))
+        .sort((a, b) => b.length - a.length)[0];
+      return (root ? path.relative(root, file) : path.basename(file)).split(path.sep).join("/");
+    };
+    const exportKey = file => path.join(path.dirname(file), cleanStem(file));
+    const availableExports = new Set(), handledExports = new Set();
     const candidates = all.filter(
       (f) => included(f) && skeletonPattern.test(f),
     );
-    for (const project of all.filter(
-      (f) => included(f) && /\.spine$/i.test(f),
-    )) {
-      report.errors.push({
-        file: path.basename(project),
-        message:
-          "这是 Spine 工程文件。请在 Spine 中导出 JSON 或二进制数据，并一起导出 atlas 和贴图。",
-      });
-    }
     for (const source of candidates) {
       let assetDir;
       try {
@@ -201,6 +201,7 @@ class Library {
               ? `检测到 Spine ${version}，当前支持 ${SUPPORTED.join(" / ")}。请使用匹配版本重新导出。`
               : "无法识别 Spine 导出版本，请检查文件是否完整。",
           );
+        if (runtime === "3.6" && format === "skel") json = decodeSkeleton36(raw);
         const nearby = atlases.filter(
           (a) => path.dirname(a) === path.dirname(source),
         );
@@ -250,17 +251,23 @@ class Library {
           textures.push({ source: texture, dest, bytes });
           lines[page.line] = dest;
         }
+        // 3.6 binaries are decoded for preview during import. Verify the same
+        // atlas attachment references before counting the asset as successful.
+        if (runtime === "3.6") await loadSkeletonData({runtime, json}, atlasText);
         const hash = createHash("sha256").update(raw).update(atlasText);
         for (const texture of textures) hash.update(texture.bytes);
         const fingerprint = hash.digest("hex");
         if (this.data.assets.some((a) => a.fingerprint === fingerprint)) {
           report.duplicates.push(path.basename(source));
+          availableExports.add(exportKey(source));
           continue;
         }
         const id = randomUUID();
         assetDir = path.join(this.root, "assets", id);
         await fs.mkdir(path.join(assetDir, "textures"), { recursive: true });
         await fs.writeFile(path.join(assetDir, `skeleton.${format}`), raw);
+        if (runtime === "3.6" && format === "skel")
+          await fs.writeFile(path.join(assetDir, "preview.json"), JSON.stringify(json));
         await fs.writeFile(
           path.join(assetDir, "texture.atlas"),
           lines.join("\n"),
@@ -318,11 +325,38 @@ class Library {
         }
         this.data.assets.push(asset);
         report.added.push(id);
+        availableExports.add(exportKey(source));
       } catch (error) {
         if (assetDir) await fs.rm(assetDir, { recursive: true, force: true });
         report.errors.push({
           file: path.basename(source),
+          relativePath: relativePath(source),
           message: error.message,
+        });
+        handledExports.add(exportKey(source));
+      }
+    }
+    // Editor projects often accompany their exported skeleton. Report each
+    // resource once, and keep the actionable export failure if one occurred.
+    const projects = all.filter(f => included(f) && /\.spine$/i.test(f));
+    const exportKeys = [...new Set([...availableExports, ...handledExports])];
+    for (const project of projects) {
+      const dir = path.dirname(project);
+      let key = exportKey(project);
+      // A single project/export pair in an isolated folder can have different
+      // names. Do not guess when multiple projects or exports are present.
+      if (!availableExports.has(key) && !handledExports.has(key) &&
+          projects.filter(file => path.dirname(file) === dir).length === 1) {
+        const nearby = exportKeys.filter(file => path.dirname(file) === dir);
+        if (nearby.length === 1) key = nearby[0];
+      }
+      if (availableExports.has(key)) {
+        report.ignoredProjects.push(relativePath(project));
+      } else if (!handledExports.has(key)) {
+        report.errors.push({
+          file: path.basename(project),
+          relativePath: relativePath(project),
+          message: "这是 Spine 工程文件，未找到可导入的配套骨骼数据。请一起提供导出的 JSON 或 SKEL、atlas 和贴图。",
         });
       }
     }
