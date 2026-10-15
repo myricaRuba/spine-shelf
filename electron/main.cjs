@@ -66,6 +66,15 @@ async function seedExamples() {
     : path.join(__dirname, "../resources/examples");
   return library.importPaths([examples], { demo: true });
 }
+async function selectImportPaths(kind, projectName) {
+  if (!['files', 'folder'].includes(kind)) throw new Error('请选择文件或文件夹导入。');
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: projectName ? `导入资源到「${projectName}」` : kind === 'files' ? '选择 Spine 骨骼文件' : '选择 Spine 素材文件夹',
+    properties: kind === 'files' ? ['openFile', 'multiSelections'] : ['openDirectory', 'multiSelections'],
+    ...(kind === 'files' ? { filters: [{ name: 'Spine 导出文件', extensions: ['json', 'skel', 'bytes', 'spine'] }] } : {}),
+  });
+  return result.canceled || !result.filePaths.length ? null : result.filePaths;
+}
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1500,
@@ -177,6 +186,12 @@ app
     );
     handler("library:get", () => library.snapshot());
     handler("project:mutate", (action,input) => projects.mutate(action,input),true);
+    handler('project:import-dialog', async (id, kind) => {
+      const project = projects.project(id);
+      const paths = await selectImportPaths(kind, project.name);
+      return paths ? enqueue(() => projects.importPaths(id, paths)) : null;
+    });
+    handler('project:import-paths', (id, paths) => projects.importPaths(id, paths), true);
     handler('project:export-plan', (id,options) => projects.exportPlan(id,options));
     handler('project:spine-select', async () => {
       const selection=await dialog.showOpenDialog(mainWindow,{title:'选择 Spine 命令行程序',properties:['openFile'],...(process.platform==='win32'?{filters:[{name:'Spine 程序',extensions:['com','exe']}]}:{})});
@@ -229,26 +244,8 @@ app
     handler(
       "library:import-dialog",
       async (kind, collectionId) => {
-        const result = await dialog.showOpenDialog(mainWindow, {
-          title:
-            kind === "files" ? "选择 Spine 骨骼文件" : "选择 Spine 素材文件夹",
-          properties:
-            kind === "files"
-              ? ["openFile", "multiSelections"]
-              : ["openDirectory", "multiSelections"],
-          ...(kind === "files"
-            ? {
-                filters: [
-                  {
-                    name: "Spine 导出文件",
-                    extensions: ["json", "skel", "bytes", "spine"],
-                  },
-                ],
-              }
-            : {}),
-        });
-        if (result.canceled) return null;
-        return library.importPaths(result.filePaths, { collectionId });
+        const paths = await selectImportPaths(kind);
+        return paths ? library.importPaths(paths, { collectionId }) : null;
       },
       true,
     );

@@ -57,6 +57,7 @@ type Modal =
   | "remove"
   | "removeCollection"
   | null;
+type ImportTarget = { projectId?: string; projectName?: string; collectionId?: string };
 const emptyLibrary: Library = {
   version: 1,
   assets: [],
@@ -87,6 +88,8 @@ export default function App() {
   const [importing, setImporting] = useState(false),
     [toast, setToast] = useState(""),
     [dragging, setDragging] = useState(false);
+  const [importTarget, setImportTarget] = useState<ImportTarget>({});
+  const [importError, setImportError] = useState("");
   const [collectionName, setCollectionName] = useState(""),
     [removeTarget, setRemoveTarget] = useState<Asset | null>(null);
   const [bootError, setBootError] = useState("");
@@ -100,6 +103,11 @@ export default function App() {
     toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const libraryRef = useRef(library);
   libraryRef.current = library;
+  const currentImportTarget = (): ImportTarget => {
+    const project = libraryRef.current.projects.find(p => `project:${p.id}` === section);
+    return project ? { projectId: project.id, projectName: project.name }
+      : { collectionId: libraryRef.current.collections.find(c => c.id === section)?.id };
+  };
   const generating = useRef(false),
     thumbAttempts = useRef(new Set<string>()),
     dragCounter = useRef(0);
@@ -142,7 +150,11 @@ export default function App() {
       }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "o") {
         event.preventDefault();
+        if (importing) return;
         setReport(null);
+        setImportError("");
+        setImportTarget(currentImportTarget());
+        setProjectDialog(null);
         setModal("import");
       }
       if (event.key === "Escape" && !importing) {
@@ -153,7 +165,7 @@ export default function App() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [importing]);
+  }, [importing, section]);
   const thumbnailRevision = library.assets.map(a => `${a.id}:${a.contentRevision || 0}`).join(",");
   useEffect(() => {
     if (!loaded || generating.current || !window.shelf) return;
@@ -265,6 +277,8 @@ export default function App() {
     "动画资源库";
   const openImport = () => {
     setReport(null);
+    setImportError("");
+    setImportTarget(currentImportTarget());
     setModal("import");
   };
   const handleReport = (result: ImportReport | null) => {
@@ -272,13 +286,24 @@ export default function App() {
     setReport(result);
     applyLibrary(result.library);
     setModal("import");
-    if (result.added.length) setSelectedId(result.added[0]);
+    if (result.projectImport) {
+      setSection(`project:${result.projectImport.id}`);
+      setSearch(""); setFormat("all"); setProjectCategory("all"); setBatch(false); setCheckedAssets([]);
+      const selected = result.projectImport.added[0] || result.projectImport.existing[0];
+      if (selected) setSelectedId(selected);
+    } else if (result.added.length) setSelectedId(result.added[0]);
   };
   const importFiles = async (kind: "folder" | "files") => {
+    if (importing) return;
     setImporting(true);
+    setImportError("");
     try {
-      handleReport(await window.shelf.importDialog(kind, collection?.id));
+      if (importTarget.projectId) {
+        if (typeof window.shelf.projectImportDialog !== 'function') throw new Error('项目导入功能已更新，请完全退出并重新打开 Spine Shelf 后使用。');
+        handleReport(await window.shelf.projectImportDialog(importTarget.projectId, kind));
+      } else handleReport(await window.shelf.importDialog(kind, importTarget.collectionId));
     } catch (e) {
+      setImportError(e instanceof Error ? e.message : String(e));
       notify(String(e));
     } finally {
       setImporting(false);
@@ -303,12 +328,20 @@ export default function App() {
       Array.from(event.dataTransfer.files),
     );
     if (!paths.length) return;
+    const target = modal === 'import' ? importTarget : currentImportTarget();
+    setImportTarget(target);
+    setImportError("");
+    setProjectDialog(null);
     setImporting(true);
     setReport(null);
     setModal("import");
     try {
-      handleReport(await window.shelf.importPaths(paths, collection?.id));
+      if (target.projectId) {
+        if (typeof window.shelf.projectImportPaths !== 'function') throw new Error('项目导入功能已更新，请完全退出并重新打开 Spine Shelf 后使用。');
+        handleReport(await window.shelf.projectImportPaths(target.projectId, paths));
+      } else handleReport(await window.shelf.importPaths(paths, target.collectionId));
     } catch (e) {
+      setImportError(e instanceof Error ? e.message : String(e));
       notify(String(e));
     } finally {
       setImporting(false);
@@ -616,6 +649,7 @@ export default function App() {
             </div>
             {activeProject ? <div className="project-heading-actions">
               <button className="button" onClick={()=>setGenerating(true)}><Sparkles size={16}/>制作 Spine</button>
+              <button className="button" disabled={importing} onClick={openImport}><Upload size={16}/>导入资源</button>
               <button className="button" onClick={()=>setProjectDialog({mode:'picker',projectId:activeProject.id})}><Plus size={16}/>添加素材</button>
               <button className="button primary" disabled={exporting || !activeProject.members.length} onClick={()=>setProjectDialog({mode:'export',projectId:activeProject.id})}><Download size={16}/>导出项目</button>
             </div> : <div className="project-heading-actions"><button className="button" onClick={()=>setGenerating(true)}><Sparkles size={16}/>制作 Spine</button><button
@@ -862,7 +896,7 @@ export default function App() {
                       : "你的下一个灵感，从这里开始"}
                 </h3>
                 <p>
-                  {activeProject ? '从资源库加入素材，再设置分类与导出皮肤。' : search || format !== "all"
+                  {activeProject ? '导入本地素材或从资源库添加，再设置分类与导出皮肤。' : search || format !== "all"
                     ? "试试其他关键词，或清除筛选条件。"
                     : section === "favorites"
                       ? "点击资源卡片上的星标，就能随时找回。"
@@ -882,10 +916,13 @@ export default function App() {
                   </button>
                 ) : (
                   section !== "favorites" && (
-                    <button className="button primary" onClick={()=>activeProject?setProjectDialog({mode:'picker',projectId:activeProject.id}):openImport()}>
+                    <div className="project-empty-actions">
+                    {activeProject && <button className="button primary" disabled={importing} onClick={openImport}><Upload size={16}/>导入本地资源</button>}
+                    <button className={`button ${activeProject?'':'primary'}`} onClick={()=>activeProject?setProjectDialog({mode:'picker',projectId:activeProject.id}):openImport()}>
                       <Plus size={16} />
                       {activeProject?'从资源库添加':'导入资源'}
                     </button>
+                    </div>
                   )
                 )}
               </div>
@@ -939,13 +976,19 @@ export default function App() {
       </div>
       <Tooltips />
       {generationOpen&&<GenerationDialog close={()=>setGenerating(false)} view={id=>{setGenerating(false);setSection('all');setSearch('');setFormat('all');setSelectedId(id);}}/>}
-      {projectDialog && <ProjectDialogs key={`${projectDialog.mode}:${projectDialog.projectId}:${projectDialog.assetIds?.join(',')}`} state={projectDialog} library={library} close={()=>setProjectDialog(null)} mutate={mutateProject} onCreated={id=>changeSection(id?`project:${id}`:'all')} onExport={exportProject} exportProgress={exportProgress}/>}
+      {projectDialog && <ProjectDialogs key={`${projectDialog.mode}:${projectDialog.projectId}:${projectDialog.assetIds?.join(',')}`} state={projectDialog} library={library} close={()=>setProjectDialog(null)} mutate={mutateProject} onCreated={id=>changeSection(id?`project:${id}`:'all')} onExport={exportProject} exportProgress={exportProgress}
+        onImport={id=>{
+          const project=library.projects.find(p=>p.id===id);
+          if(!project)return;
+          setProjectDialog(null);setReport(null);setImportError("");
+          setImportTarget({projectId:id,projectName:project.name});setModal('import');
+        }} />}
       {dragging && (
         <div className="drop-overlay">
           <div>
             <Upload size={46} />
             <h2>把灵感放进来</h2>
-            <p>松开鼠标，自动识别文件夹中的 Spine 素材</p>
+            <p>{activeProject ? `松开鼠标，导入 Spine 素材并加入「${activeProject.name}」` : '松开鼠标，自动识别文件夹中的 Spine 素材'}</p>
             <span>JSON / SKEL + ATLAS + 贴图</span>
           </div>
         </div>
@@ -977,32 +1020,38 @@ export default function App() {
                 <span className="modal-symbol">
                   <Upload size={23} />
                 </span>
-                <h2 id="modal-title">把动画加入你的资源库</h2>
+                <h2 id="modal-title">{importTarget.projectId ? `导入资源到「${importTarget.projectName}」` : '把动画加入你的资源库'}</h2>
                 <p className="modal-description">
-                  选择素材文件夹，自动配对文件并按内容分类。
+                  {importTarget.projectId ? '选择本地素材，导入后自动加入当前项目并按内容分类。已有素材会直接复用。' : '选择素材文件夹，自动配对文件并按内容分类。'}
                 </p>
+                {importError && <p className="reskin-error" role="alert">{importError}</p>}
                 {importing ? (
                   <div className="import-progress">
                     <LoaderCircle size={30} className="spinning" />
                     <h3>正在整理素材…</h3>
-                    <p>识别文件、检查内容分类，并保存到本地资源库。</p>
+                    <p>{importTarget.projectId ? '识别文件、保存素材，并加入当前项目。' : '识别文件、检查内容分类，并保存到本地资源库。'}</p>
                   </div>
                 ) : report ? (
                   <>
                     <div className="import-summary">
                       <div>
                         <b>{report.added.length}</b>
-                        <span>成功导入</span>
+                        <span>{report.projectImport ? '新增入库' : '成功导入'}</span>
                       </div>
                       <div>
                         <b>{report.duplicates.length}</b>
-                        <span>重复已跳过</span>
+                        <span>{report.projectImport ? '重复素材已复用' : '重复已跳过'}</span>
                       </div>
                       <div className={report.errors.length ? "has-errors" : ""}>
                         <b>{report.errors.length}</b>
                         <span>需要处理</span>
                       </div>
                     </div>
+                    {report.projectImport && <div className="project-import-result" role="status">
+                      <strong>已加入项目 {report.projectImport.added.length} 份素材</strong>
+                      {report.projectImport.existing.length > 0 && <span>另有 {report.projectImport.existing.length} 份已在项目中，保留已有设置。</span>}
+                      {report.projectImport.error && <p className="reskin-error" role="alert">{report.projectImport.error}</p>}
+                    </div>}
                     {report.added.length > 0 && (
                       <div className="classification-summary">
                         {(Object.keys(CATEGORY_LABELS) as Category[]).map(
@@ -1042,7 +1091,7 @@ export default function App() {
                     <div className="modal-actions">
                       <button
                         className="button"
-                        onClick={() => setReport(null)}
+                        onClick={() => {setReport(null);setImportError("");}}
                       >
                         继续导入
                       </button>
@@ -1050,7 +1099,7 @@ export default function App() {
                         className="button primary"
                         onClick={() => setModal(null)}
                       >
-                        查看资源库
+                        {report.projectImport ? '查看项目' : '查看资源库'}
                         <ArrowRight size={15} />
                       </button>
                     </div>
@@ -1087,13 +1136,13 @@ export default function App() {
                         </span>
                       </p>
                     </div>
-                    <div className="demo-action">
+                    {!importTarget.projectId && <div className="demo-action">
                       <span>手头还没有素材？</span>
                       <button className="text-button" onClick={examples}>
                         <Sparkles size={14} />
                         加载官方演示
                       </button>
-                    </div>
+                    </div>}
                   </>
                 )}
               </>

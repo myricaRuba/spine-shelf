@@ -31,6 +31,7 @@ test("recursive folder import persists independent copies, metadata, grouping an
   const duplicate = await library.importPaths([source]);
   assert.equal(duplicate.added.length, 0);
   assert.equal(duplicate.duplicates.length, 1);
+  assert.deepEqual(duplicate.existingIds, [id]);
   const grouped = await library.collection("create", undefined, "角色");
   await library.update(id, {
     favorite: true,

@@ -2025,6 +2025,11 @@ body.resizing-preview * {
 .import-summary .has-errors b {
   color: #e9b782;
 }
+.project-import-result { display:flex; flex-direction:column; gap:8px; margin:16px 0; padding:14px; border:1px solid #46553b; border-radius:8px; background:#a6c87c0a; font-size:12px; line-height:1.6; }
+.project-import-result strong { color:#d0f996; }
+.project-import-result span { color:#9fa9b3; }
+.project-empty-actions { display:flex; justify-content:center; flex-wrap:wrap; gap:10px; }
+.project-import-link { display:inline-flex; align-items:center; gap:6px; margin:0 0 16px; }
 .import-errors {
   max-height: 220px;
   overflow: auto;

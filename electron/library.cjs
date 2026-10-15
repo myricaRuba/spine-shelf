@@ -168,7 +168,7 @@ class Library {
     const included = (file) =>
       selected.has(file) ||
       folders.some((folder) => file.startsWith(folder + path.sep));
-    const report = { added: [], duplicates: [], errors: [], ignoredProjects: [] };
+    const report = { added: [], duplicates: [], existingIds: [], errors: [], ignoredProjects: [] };
     const relativePath = (file) => {
       const root = folders.filter(folder => file.startsWith(folder + path.sep))
         .sort((a, b) => b.length - a.length)[0];
@@ -257,8 +257,10 @@ class Library {
         const hash = createHash("sha256").update(raw).update(atlasText);
         for (const texture of textures) hash.update(texture.bytes);
         const fingerprint = hash.digest("hex");
-        if (this.data.assets.some((a) => a.fingerprint === fingerprint)) {
+        const existing = this.data.assets.find((a) => a.fingerprint === fingerprint);
+        if (existing) {
           report.duplicates.push(path.basename(source));
+          if (!report.existingIds.includes(existing.id)) report.existingIds.push(existing.id);
           availableExports.add(exportKey(source));
           continue;
         }

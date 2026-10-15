@@ -32,6 +32,7 @@
     "test:codex": "node scripts/codex-direct-smoke.mjs",
     "test:generation": "node scripts/generation-smoke.mjs",
     "test:projects": "node scripts/projects-smoke.mjs",
+    "test:project-import": "node scripts/project-import-smoke.mjs",
     "test:classification": "node scripts/classification-smoke.mjs",
     "test:layout": "node scripts/layout-smoke.mjs",
     "package": "npm run build && electron-builder --mac dir",

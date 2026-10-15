@@ -40,6 +40,25 @@ function autoCategory(project,asset) {
 class ProjectService {
   constructor(library,converter=new SpineConverter()) {this.library=library;this.converter=converter;}
   project(id) {const p=this.library.data.projects.find(p=>p.id===id);check(p,'项目不存在。');return p;}
+  async importPaths(id, paths) {
+    const project = this.project(id);
+    const members = new Set(project.members.map(m => m.assetId));
+    const report = await this.library.importPaths(paths);
+    const ids = [...new Set([...report.added, ...report.existingIds])];
+    const added = ids.filter(assetId => !members.has(assetId));
+    const projectImport = { id, name: project.name, added: [], existing: ids.filter(assetId => members.has(assetId)) };
+    if (added.length) {
+      try {
+        await this.mutate('add', { projectId: id, assetIds: added });
+        projectImport.added = added;
+      } catch (e) {
+        // Import is already durable. Report that partial success so a retry can
+        // reuse the same library assets instead of losing them or duplicating them.
+        projectImport.error = `素材已保存在资源库，但加入项目失败：${e.message}。请重试导入，软件会复用已有素材。`;
+      }
+    }
+    return { ...report, projectImport, library: this.library.snapshot() };
+  }
   async exportPlan(id,options={}) {
     const target=targetVersion(options),mode=skinMode(options),project=this.project(id);
     let members=project.members;

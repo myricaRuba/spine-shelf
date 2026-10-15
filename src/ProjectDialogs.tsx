@@ -1,13 +1,14 @@
 import {useEffect,useMemo,useState} from "react";
-import {FolderPlus,Plus,Trash2,X} from "lucide-react";
+import {FolderPlus,Plus,Trash2,Upload,X} from "lucide-react";
 import {assetUrl,CATEGORY_LABELS,type Library,type ProjectAction,type ProjectInput,type ProjectExportProgress,type ProjectExportOptions,type ProjectExportPlan,type SpineExportTarget} from "./types";
 
 export type ProjectDialogState = {mode:"create"|"settings"|"picker"|"assign"|"member"|"export";projectId?:string;assetIds?:string[]};
-export default function ProjectDialogs({state,library,close,mutate,onCreated,onExport,exportProgress}: {
+export default function ProjectDialogs({state,library,close,mutate,onCreated,onExport,exportProgress,onImport}: {
   state:ProjectDialogState;library:Library;close:()=>void;
   mutate:(action:ProjectAction,input:ProjectInput)=>Promise<string>;
   onCreated:(id:string)=>void;onExport:(id:string,options:ProjectExportOptions)=>Promise<boolean>;
   exportProgress:ProjectExportProgress|null;
+  onImport:(projectId:string)=>void;
 }) {
   const project=library.projects.find(p=>p.id===state.projectId);
   const [name,setName]=useState(project?.name || "");
@@ -100,6 +101,7 @@ export default function ProjectDialogs({state,library,close,mutate,onCreated,onE
       </>}
       {state.mode==='picker' && project && <>
         <p className="modal-description">添加到「{project.name}」</p>
+        <button className="text-button project-import-link" disabled={busy} onClick={()=>onImport(project.id)}><Upload size={14}/>从本地导入新资源</button>
         <input className="project-picker-search" aria-label="查找待添加素材" value={search} onChange={e=>setSearch(e.target.value)} placeholder="搜索素材名称或标签"/>
         {chooseCategory(project.categories)}
         <div className="project-picker-summary"><span>已选 {checked.length} 份</span><button className="text-button" onClick={()=>setChecked([...new Set([...checked,...available.filter(a=>!project.members.some(m=>m.assetId===a.id)).map(a=>a.id)])])}>选择搜索结果</button><button className="text-button" onClick={()=>setChecked([])}>清空选择</button></div>

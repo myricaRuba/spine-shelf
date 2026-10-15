@@ -3,6 +3,8 @@ contextBridge.exposeInMainWorld("shelf", {
   platform: process.platform,
   getLibrary: () => ipcRenderer.invoke("library:get"),
   projectMutate: (action,input) => ipcRenderer.invoke('project:mutate',action,input),
+  projectImportDialog: (id,kind) => ipcRenderer.invoke('project:import-dialog',id,kind),
+  projectImportPaths: (id,paths) => ipcRenderer.invoke('project:import-paths',id,paths),
   projectExport: (id,options) => ipcRenderer.invoke('project:export',id,options),
   projectExportPlan: (id,options) => ipcRenderer.invoke('project:export-plan',id,options),
   projectSelectSpine: () => ipcRenderer.invoke('project:spine-select'),

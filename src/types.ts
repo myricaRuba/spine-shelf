@@ -103,6 +103,8 @@ export interface ReskinDetails {
 export interface ImportReport {
   added: string[];
   duplicates: string[];
+  existingIds?: string[];
+  projectImport?: {id:string;name:string;added:string[];existing:string[];error?:string};
   errors: { file: string; relativePath?: string; message: string }[];
   ignoredProjects?: string[];
   library: Library;
@@ -117,6 +119,8 @@ export interface ShelfAPI {
   readonly platform: string;
   getLibrary(): Promise<Library>;
   projectMutate(action:ProjectAction,input:ProjectInput):Promise<{library:Library;projectId:string}>;
+  projectImportDialog(id:string,kind:"folder"|"files"):Promise<ImportReport|null>;
+  projectImportPaths(id:string,paths:string[]):Promise<ImportReport>;
   projectExport(id:string,options?:ProjectExportOptions):Promise<{path:string;assets:number;bytes:number;bakedSkins:number;converted:number}|null>;
   projectExportPlan(id:string,options:ProjectExportOptions):Promise<ProjectExportPlan>;
   projectSelectSpine():Promise<SpineConverterStatus|null>;

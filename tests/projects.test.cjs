@@ -152,3 +152,58 @@ test('empty, malformed and nonmember selections never fall back to exporting all
   assert.equal(await fs.readFile(dest,'utf8'),'keep');
   assert.equal(x.service.project(id).members.length,1);
 });
+
+test('project import joins new and matching library assets once and preserves existing member settings',async t=>{
+  const x=await setup(t), id=(await x.service.mutate('create',{name:'直接导入'})).projectId;
+  const other=(await x.service.mutate('create',{name:'另一个项目'})).projectId;
+  await x.service.mutate('add',{projectId:other,assetIds:[x.asset.id],categoryId:'terrain'});
+  await x.library.update(x.asset.id,{favorite:true,tags:['keep'],note:'已有资源'});
+  const paths=[path.resolve('resources/examples/spineboy'),path.resolve('resources/examples/alien')];
+  const first=await x.service.importPaths(id,paths);
+  assert.equal(first.added.length,1);assert.equal(first.duplicates.length,1);
+  assert.deepEqual(first.existingIds,[x.asset.id]);assert.equal(first.projectImport.added.length,2);
+  assert.equal(first.projectImport.id,id);assert.deepEqual(first.projectImport.existing,[]);
+  assert.equal(x.library.data.assets.length,2);assert.equal(x.service.project(id).members.length,2);
+  assert.ok(x.service.project(id).members.every(m=>m.categoryId==='character'));
+  assert.equal(x.service.project(other).members.length,1);assert.equal(x.service.project(other).members[0].categoryId,'terrain');
+  await x.service.mutate('member',{projectId:id,assetId:x.asset.id,categoryId:'props',skin:x.asset.skins[0],label:'自定义名字',note:'保留设置'});
+  const before=structuredClone(x.service.project(id));
+  const second=await x.service.importPaths(id,paths);
+  assert.deepEqual(second.added,[]);assert.equal(second.duplicates.length,2);
+  assert.deepEqual(second.projectImport.added,[]);assert.equal(second.projectImport.existing.length,2);
+  assert.deepEqual(x.service.project(id),before);
+  assert.equal(x.asset.favorite,true);assert.deepEqual(x.asset.tags,['keep']);assert.equal(x.asset.note,'已有资源');
+  const reloaded=new Library(x.library.root);await reloaded.init();
+  assert.deepEqual(reloaded.data.projects.find(p=>p.id===id),before);
+});
+
+test('project import retains per-file errors, allows successful assets and rejects nonexistent destinations before import',async t=>{
+  const x=await setup(t), id=(await x.service.mutate('create',{name:'部分成功'})).projectId;
+  const bad=path.join(x.root,'bad');await fs.mkdir(bad);
+  await fs.writeFile(path.join(bad,'broken.json'),JSON.stringify({skeleton:{spine:'4.2.22'},bones:[{name:'root'}]}));
+  const snapshot=x.library.snapshot();
+  await assert.rejects(x.service.importPaths('missing',[path.resolve('resources/examples/alien')]),/项目不存在/);
+  assert.deepEqual(x.library.snapshot(),snapshot);
+  const result=await x.service.importPaths(id,[path.resolve('resources/examples/alien'),bad]);
+  assert.equal(result.added.length,1);assert.equal(result.errors.length,1);assert.equal(result.errors[0].file,'broken.json');
+  assert.deepEqual(result.projectImport.added,result.added);assert.equal(x.service.project(id).members.length,1);
+  const failed=await x.service.importPaths(id,[bad]);
+  assert.deepEqual(failed.projectImport.added,[]);assert.equal(failed.errors.length,1);assert.equal(x.service.project(id).members.length,1);
+});
+
+test('project membership save failure reports durable imports and a retry reuses them',async t=>{
+  const x=await setup(t), id=(await x.service.mutate('create',{name:'写入恢复'})).projectId;
+  const save=x.library.save.bind(x.library);let writes=0;
+  x.library.save=async()=>{if(++writes===2)throw new Error('disk full');return save();};
+  const incoming=[path.resolve('resources/examples/alien')];
+  const result=await x.service.importPaths(id,incoming);
+  assert.equal(result.added.length,1);assert.deepEqual(result.projectImport.added,[]);
+  assert.match(result.projectImport.error,/加入项目失败.*disk full/);
+  assert.equal(result.library.assets.length,2);assert.equal(result.library.projects.find(p=>p.id===id).members.length,0);
+  const saved=new Library(x.library.root);await saved.init();assert.equal(saved.data.assets.length,2);
+  x.library.save=save;
+  const retried=await x.service.importPaths(id,incoming);
+  assert.deepEqual(retried.added,[]);assert.equal(retried.duplicates.length,1);
+  assert.deepEqual(retried.projectImport.added,result.added);assert.equal(retried.projectImport.error,undefined);
+  assert.equal(x.library.data.assets.length,2);assert.equal(x.service.project(id).members.length,1);
+});
